@@ -1,11 +1,14 @@
 use super::{Pack, ScheduledIo, INITIAL_PAGE_SIZE, WIDTH};
-use crate::sync::CausalCell;
+use crate::sync::{
+    atomic::{AtomicUsize, Ordering},
+    CausalCell,
+};
 
 pub(crate) mod slot;
 mod stack;
 use self::slot::Slot;
 use self::stack::TransferStack;
-use std::fmt;
+use std::{fmt, mem::MaybeUninit};
 
 /// A page address encodes the location of a slot within a shard (the page
 /// number and offset within that page) as a single linear value.
@@ -55,8 +58,10 @@ impl Pack for Addr {
     }
 }
 
-pub(in crate::driver) type Iter<'a> =
-    std::iter::FilterMap<std::slice::Iter<'a, Slot>, fn(&'a Slot) -> Option<&'a ScheduledIo>>;
+pub(in crate::driver) type Iter<'a> = std::iter::FilterMap<
+    std::slice::Iter<'a, CausalCell<MaybeUninit<Slot>>>,
+    fn(&'a CausalCell<MaybeUninit<Slot>>) -> Option<&'a ScheduledIo>,
+>;
 
 pub(crate) struct Local {
     head: CausalCell<usize>,
@@ -66,8 +71,11 @@ pub(crate) struct Shared {
     remote: TransferStack,
     size: usize,
     prev_sz: usize,
-    slab: CausalCell<Option<Box<[Slot]>>>,
+    last_init: AtomicUsize,
+    slab: CausalCell<Option<Slab>>,
 }
+
+type Slab = Box<[CausalCell<MaybeUninit<Slot>>]>;
 
 impl Local {
     pub(crate) fn new() -> Self {
@@ -97,6 +105,7 @@ impl Shared {
             prev_sz,
             size,
             remote: TransferStack::new(),
+            last_init: AtomicUsize::new(0),
             slab: CausalCell::new(None),
         }
     }
@@ -112,13 +121,11 @@ impl Shared {
     #[cold]
     fn alloc_page(&self, _: &Local) {
         test_println!("-> alloc new page ({})", self.size);
-
         debug_assert!(self.slab.with(|s| unsafe { (*s).is_none() }));
-
         let mut slab = Vec::with_capacity(self.size);
-        slab.extend((1..self.size).map(Slot::new));
-        slab.push(Slot::new(Self::NULL));
-        self.slab.with_mut(|s| {
+        slab.push(CausalCell::new(MaybeUninit::new(Slot::new(1))));
+        slab.resize_with(self.size, || CausalCell::new(MaybeUninit::uninit()));
+        self.slab.with_mut(move |s| {
             // this mut access is safe — it only occurs to initially
             // allocate the page, which only happens on this thread; if the
             // page has not yet been allocated, other threads will not try
@@ -163,8 +170,39 @@ impl Shared {
                 .as_ref()
                 .expect("page must have been allocated to alloc!");
             let slot = &slab[head];
-            local.set_head(slot.next());
-            slot.alloc()
+
+            // check if the slot at index `head` has already been initialized.
+            let last_init = self.last_init.load(Ordering::Acquire);
+            test_println!("-> last_init {:#x}", last_init);
+            if head > last_init {
+                let next = if head == self.size {
+                    Self::NULL
+                } else {
+                    head + 1
+                };
+                // If the slot has yet to be initialized, it's not being
+                // accessed concurrently yet..
+                slot.with_mut(|slot| unsafe {
+                    (*slot) = MaybeUninit::new(Slot::new(next));
+                });
+                let _actual = self
+                    .last_init
+                    .compare_and_swap(last_init, head, Ordering::Release);
+                debug_assert_eq!(
+                    last_init, _actual,
+                    "last_init should not be modified concurrently!"
+                )
+            }
+            slot.with(|slot| {
+                let slot = unsafe {
+                    // safety: this assumes the slot is initialized. which it
+                    // is, because the code above ensures that the slot is
+                    // initialized.
+                    &*((*slot).as_ptr())
+                };
+                local.set_head(slot.next());
+                slot.alloc()
+            })
         });
 
         let index = head + self.prev_sz;
@@ -177,13 +215,16 @@ impl Shared {
     pub(in crate::driver) fn get(&self, addr: Addr, idx: usize) -> Option<&ScheduledIo> {
         let page_offset = addr.offset() - self.prev_sz;
         test_println!("-> offset {:?}", page_offset);
+        if page_offset > self.last_init.load(Ordering::Acquire) {
+            return None;
+        }
 
         #[allow(clippy::let_and_return)] // clippy doesn't know about the test_println!
         let value = self.slab.with(|slab| {
             unsafe { &*slab }
                 .as_ref()?
                 .get(page_offset)?
-                .get(slot::Generation::from_packed(idx))
+                .with(|slot| unsafe { (*(*slot).as_ptr()).get(slot::Generation::from_packed(idx)) })
         });
         test_println!("-> offset {:?}; value={:?}", page_offset, value);
         value
@@ -192,18 +233,20 @@ impl Shared {
     pub(crate) fn remove_local(&self, local: &Local, addr: Addr, idx: usize) {
         let offset = addr.offset() - self.prev_sz;
         test_println!("-> offset {:?}", offset);
-
+        if offset > self.last_init.load(Ordering::Acquire) {
+            return;
+        }
         self.slab.with(|slab| {
-            let slab = unsafe { &*slab }.as_ref();
-            let slot = if let Some(slot) = slab.and_then(|slab| slab.get(offset)) {
-                slot
-            } else {
-                return;
-            };
-            if slot.reset(slot::Generation::from_packed(idx)) {
-                slot.set_next(local.head());
-                local.set_head(offset);
-            }
+            let slab = unsafe { &*slab }
+                .as_ref()
+                .expect("slab should have been allocated");
+            slab[offset].with(|slot| {
+                let slot = unsafe { &*((*slot).as_ptr()) };
+                if slot.reset(slot::Generation::from_packed(idx)) {
+                    slot.set_next(local.head());
+                    local.set_head(offset);
+                }
+            })
         })
     }
 
@@ -212,22 +255,29 @@ impl Shared {
         test_println!("-> offset {:?}", offset);
 
         self.slab.with(|slab| {
-            let slab = unsafe { &*slab }.as_ref();
-            let slot = if let Some(slot) = slab.and_then(|slab| slab.get(offset)) {
-                slot
-            } else {
-                return;
-            };
-            if !slot.reset(slot::Generation::from_packed(idx)) {
-                return;
-            }
-            self.remote.push(offset, |next| slot.set_next(next));
+            let slab = unsafe { &*slab }
+                .as_ref()
+                .expect("slab should have been allocated");
+            slab[offset].with(|slot| {
+                let slot = unsafe { &*((*slot).as_ptr()) };
+                if !slot.reset(slot::Generation::from_packed(idx)) {
+                    return;
+                }
+                self.remote.push(offset, |next| slot.set_next(next));
+            })
         })
     }
 
     pub(in crate::driver) fn iter(&self) -> Option<Iter<'_>> {
-        let slab = self.slab.with(|slab| unsafe { (&*slab).as_ref() });
-        slab.map(|slab| slab.iter().filter_map(Slot::value as fn(_) -> _))
+        let last_init = self.last_init.load(Ordering::Acquire);
+        let slab = self.slab.with(|slab| unsafe { (&*slab).as_ref() })?;
+        // take only until the last slot that's initialized.
+        let slab = &slab[..=last_init];
+        Some(slab.iter().filter_map(
+            (|s: &CausalCell<MaybeUninit<Slot>>| {
+                s.with(|slot| unsafe { (*(*slot).as_ptr()).value() })
+            }) as fn(_) -> _,
+        ))
     }
 }
 
@@ -248,7 +298,7 @@ impl fmt::Debug for Shared {
             .field("remote", &self.remote)
             .field("prev_sz", &self.prev_sz)
             .field("size", &self.size)
-            // .field("slab", &self.slab)
+            .field("last_init", &self.last_init)
             .finish()
     }
 }

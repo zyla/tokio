@@ -146,7 +146,9 @@ fn concurrent_alloc_remove() {
 
 #[test]
 fn unique_iter() {
-    test_util::run_model("single_shard::unique_iter", || {
+    let mut model = loom::model::Builder::new();
+    model.max_branches = 100000;
+    test_util::run_builder("single_shard::unique_iter", model, || {
         let mut slab = Arc::new(SingleShard::new());
 
         let s = slab.clone();
