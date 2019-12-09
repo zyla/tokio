@@ -5,7 +5,7 @@ use tokio_test::{assert_err, assert_ok};
 
 use loom::future::block_on;
 use loom::sync::atomic::AtomicBool;
-use loom::sync::atomic::Ordering::{Acquire, Release};
+use loom::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use loom::thread;
 use std::future::Future;
 
@@ -193,6 +193,44 @@ fn shutdown_from_queue_after_poll() {
 
         assert_err!(th.join().unwrap());
     });
+}
+
+#[test]
+fn drop_external() {
+    use std::cell::RefCell;
+    static ITERS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
+    loom::model(|| {
+        println!("---- iteration {} ----", ITERS.fetch_add(1, Relaxed));
+        let mut rt = crate::runtime::Builder::new()
+            .basic_scheduler()
+            .build()
+            .unwrap();
+
+        let local = task::LocalSet::new();
+        let (tx, rx) = crate::sync::oneshot::channel();
+        local.block_on(&mut rt, async move {
+            task::spawn_local(async move {
+                println!("spawn task");
+                let cell = RefCell::new(1usize);
+                let _borrow = cell.borrow_mut();
+                println!("await rx");
+                rx.await.unwrap();
+                println!("rx recv");
+            });
+            task::yield_now().await;
+        });
+
+        let thread = loom::thread::spawn(move || {
+            println!("send tx");
+            tx.send(());
+            println!("tx sent");
+        });
+
+        println!("dropping localset");
+        drop(local);
+        println!("dropped localset");
+        thread.join().unwrap();
+    })
 }
 
 fn gated(n: usize, complete_first_poll: bool, by_val: bool) -> impl Future<Output = &'static str> {
