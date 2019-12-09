@@ -1,10 +1,6 @@
 use super::{OwnedList, Schedule, Task, TransferStack};
-use std::{
-    cell::UnsafeCell,
-    collections::VecDeque,
-    fmt,
-    sync::{Mutex, MutexGuard},
-};
+use crate::loom::sync::{Mutex, MutexGuard};
+use std::{cell::UnsafeCell, collections::VecDeque, fmt};
 
 /// A set of multi-producer, single consumer task queues, suitable for use by a
 /// single-threaded scheduler.
