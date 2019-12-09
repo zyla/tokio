@@ -439,6 +439,7 @@ impl Drop for Scheduler {
             // the thread here?
             while self.queues.has_tasks_remaining() {
                 self.queues.drain_pending_drop();
+                crate::loom::thread::yield_now();
             }
         }
     }
