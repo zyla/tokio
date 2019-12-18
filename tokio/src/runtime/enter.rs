@@ -97,9 +97,12 @@ cfg_blocking_impl! {
             let mut f = unsafe { Pin::new_unchecked(&mut f) };
 
             loop {
+                let span = trace_span!("tokio::block_on", task.id= ?format_args!("{:p}", f));
+                let _enter = span.enter();
                 if let Ready(v) = f.as_mut().poll(&mut cx) {
                     return v;
                 }
+                trace!(task.is_ready = false);
                 park.park().unwrap();
             }
         }

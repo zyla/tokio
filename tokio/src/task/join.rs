@@ -118,11 +118,14 @@ impl<T> Future for JoinHandle<T> {
             };
 
             if state.is_active() {
+                trace!(task.pending = true, resource = ?self, "JoinHandle::poll");
                 return Poll::Pending;
             }
         }
 
         let mut out = MaybeUninit::<Track<Self::Output>>::uninit();
+
+        trace!(task.id = %raw.id(), task.is_ready = true, "JoinHandle::poll");
 
         unsafe {
             // This could result in the task being freed.
@@ -147,11 +150,14 @@ impl<T> Drop for JoinHandle<T> {
     }
 }
 
-impl<T> fmt::Debug for JoinHandle<T>
-where
-    T: fmt::Debug,
-{
+impl<T> fmt::Debug for JoinHandle<T> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_struct("JoinHandle").finish()
+        if let Some(raw) = self.raw.as_ref() {
+            fmt.debug_struct("JoinHandle")
+                .field("task", &format_args!("{}", raw.id()))
+                .finish()
+        } else {
+            fmt.debug_struct("JoinHandle").finish()
+        }
     }
 }

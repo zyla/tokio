@@ -4,6 +4,7 @@ use crate::task::Harness;
 use crate::task::{Header, Schedule, ScheduleSendOnly};
 use crate::task::{Snapshot, State};
 
+use std::fmt;
 use std::future::Future;
 use std::ptr::NonNull;
 use std::task::Waker;
@@ -12,6 +13,10 @@ use std::task::Waker;
 pub(super) struct RawTask {
     ptr: NonNull<Header>,
 }
+
+#[derive(Clone, Eq, PartialEq, Hash)]
+#[repr(transparent)]
+pub(crate) struct Id(usize);
 
 pub(super) struct Vtable {
     /// Poll the future
@@ -95,6 +100,10 @@ impl RawTask {
     /// Safe as `Header` is `Sync`.
     pub(super) fn header(&self) -> &Header {
         unsafe { self.ptr.as_ref() }
+    }
+
+    pub(super) fn id(&self) -> Id {
+        Id(self.ptr.as_ptr() as usize)
     }
 
     /// Returns a raw pointer to the task's meta structure.
@@ -194,4 +203,26 @@ unsafe fn drop_join_handle_slow<T: Future, S: Schedule>(ptr: *mut ()) {
 unsafe fn cancel<T: Future, S: Schedule>(ptr: *mut (), from_queue: bool) {
     let harness = Harness::<T, S>::from_raw(ptr);
     harness.cancel(from_queue)
+}
+
+// === impl Id ===
+
+impl Id {
+    pub(crate) fn as_usize(self) -> usize {
+        self.0
+    }
+}
+
+impl fmt::Debug for Id {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Id")
+            .field(&format_args!("{:#08x}", self.0))
+            .finish()
+    }
+}
+
+impl fmt::Display for Id {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:08x}", self.0)
+    }
 }

@@ -328,11 +328,13 @@ unsafe fn sched_clone_waker(ptr: *const ()) -> RawWaker {
 }
 
 unsafe fn sched_wake(ptr: *const ()) {
+    trace!("wake");
     let scheduler = Arc::from_raw(ptr as *const SchedulerPriv);
     scheduler.unpark.unpark();
 }
 
 unsafe fn sched_wake_by_ref(ptr: *const ()) {
+    trace!("wake_by_ref");
     let scheduler = ManuallyDrop::new(Arc::from_raw(ptr as *const SchedulerPriv));
     scheduler.unpark.unpark();
 }

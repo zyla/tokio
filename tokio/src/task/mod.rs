@@ -238,6 +238,7 @@ cfg_rt_core! {
 
     mod raw;
     use self::raw::RawTask;
+    pub(crate) use self::raw::Id;
 
     mod spawn;
     pub use spawn::spawn;
@@ -359,6 +360,10 @@ cfg_rt_core! {
             mem::forget(self);
             raw
         }
+
+        pub(crate) fn id(&self) -> Id {
+            self.raw.id()
+        }
     }
 
     impl<S: Schedule> Task<S> {
@@ -367,6 +372,8 @@ cfg_rt_core! {
         where
             F: FnMut() -> Option<NonNull<S>>,
         {
+            let span = trace_span!("tokio::poll", task.id = %self.id());
+            let _enter = span.enter();
             if unsafe {
                 self.raw
                     .poll(&mut || executor().map(|ptr| ptr.cast::<()>()))
@@ -395,7 +402,8 @@ cfg_rt_core! {
 
     impl<S> fmt::Debug for Task<S> {
         fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-            fmt.debug_struct("Task").finish()
+            fmt.debug_struct("Task")
+            .field("id", &self.id()).finish()
         }
     }
 }

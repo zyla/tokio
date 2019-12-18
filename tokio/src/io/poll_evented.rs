@@ -1,5 +1,5 @@
+use crate::io::driver::platform;
 use crate::io::{AsyncRead, AsyncWrite, Registration};
-use crate::io::driver::{platform};
 
 use mio::event::Evented;
 use std::fmt;
@@ -346,6 +346,11 @@ where
 
         if is_wouldblock(&r) {
             self.clear_read_ready(cx, mio::Ready::readable())?;
+            debug!(
+                task.pending = true,
+                resource = std::any::type_name::<E>(),
+                "AsyncRead::poll_read"
+            );
             return Poll::Pending;
         }
 
@@ -368,6 +373,12 @@ where
 
         if is_wouldblock(&r) {
             self.clear_write_ready(cx)?;
+
+            debug!(
+                task.pending = true,
+                resource = std::any::type_name::<E>(),
+                "AsyncWrite::poll_write"
+            );
             return Poll::Pending;
         }
 
@@ -381,6 +392,12 @@ where
 
         if is_wouldblock(&r) {
             self.clear_write_ready(cx)?;
+
+            debug!(
+                task.pending = true,
+                resource = std::any::type_name::<E>(),
+                "AsyncWrite::poll_flush"
+            );
             return Poll::Pending;
         }
 

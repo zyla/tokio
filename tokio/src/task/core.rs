@@ -59,6 +59,8 @@ pub(crate) struct Header {
     /// Used by loom to track the causality of the future. Without loom, this is
     /// unit.
     pub(super) future_causality: CausalCell<()>,
+
+    span: crate::util::tracing::Span,
 }
 
 /// Cold data is stored after the future.
@@ -81,7 +83,7 @@ impl<T: Future> Cell<T> {
     where
         S: Schedule,
     {
-        Box::new(Cell {
+        let mut f = Box::new(Cell {
             header: Header {
                 state,
                 executor: CausalCell::new(None),
@@ -90,6 +92,7 @@ impl<T: Future> Cell<T> {
                 owned_prev: UnsafeCell::new(None),
                 vtable: raw::vtable::<T, S>(),
                 future_causality: CausalCell::new(()),
+                span: crate::util::tracing::Span::none(),
             },
             core: Core {
                 stage: Stage::Running(Track::new(future)),
@@ -97,7 +100,13 @@ impl<T: Future> Cell<T> {
             trailer: Trailer {
                 waker: CausalCell::new(MaybeUninit::new(None)),
             },
-        })
+        });
+        #[cfg(all(tokio_unstable, feature = "tracing"))]
+        {
+            let span = trace_span!("tokio::task", id = ?format_args!("{:p}", f));
+            f.header.span = span;
+        }
+        f
     }
 }
 
@@ -110,6 +119,7 @@ impl<T: Future> Core<T> {
     where
         S: Schedule,
     {
+        // let _enter = header.span.enter();
         let res = {
             let future = match &mut self.stage {
                 Stage::Running(tracked) => tracked.get_mut(),
@@ -127,8 +137,9 @@ impl<T: Future> Core<T> {
 
             future.poll(&mut cx)
         };
-
-        if res.is_ready() {
+        let ready = res.is_ready();
+        trace!(task.is_ready = ready);
+        if ready {
             self.stage = Stage::Consumed;
         }
 

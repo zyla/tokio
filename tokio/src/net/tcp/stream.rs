@@ -635,6 +635,7 @@ impl TcpStream {
         match self.io.get_ref().read(buf) {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 self.io.clear_read_ready(cx, mio::Ready::readable())?;
+                debug!(task.pending = true, resource = ?self, "poll_read");
                 Poll::Pending
             }
             x => Poll::Ready(x),
@@ -651,6 +652,8 @@ impl TcpStream {
         match self.io.get_ref().write(buf) {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 self.io.clear_write_ready(cx)?;
+
+                debug!(task.pending = true, resource = ?self, "poll_write");
                 Poll::Pending
             }
             x => Poll::Ready(x),
@@ -674,22 +677,70 @@ impl TcpStream {
 
         // IoSlice isn't Copy, so we must expand this manually ;_;
         let mut slices: [IoSlice<'_>; MAX_BUFS] = [
-            IoSlice::new(S), IoSlice::new(S), IoSlice::new(S), IoSlice::new(S),
-            IoSlice::new(S), IoSlice::new(S), IoSlice::new(S), IoSlice::new(S),
-            IoSlice::new(S), IoSlice::new(S), IoSlice::new(S), IoSlice::new(S),
-            IoSlice::new(S), IoSlice::new(S), IoSlice::new(S), IoSlice::new(S),
-            IoSlice::new(S), IoSlice::new(S), IoSlice::new(S), IoSlice::new(S),
-            IoSlice::new(S), IoSlice::new(S), IoSlice::new(S), IoSlice::new(S),
-            IoSlice::new(S), IoSlice::new(S), IoSlice::new(S), IoSlice::new(S),
-            IoSlice::new(S), IoSlice::new(S), IoSlice::new(S), IoSlice::new(S),
-            IoSlice::new(S), IoSlice::new(S), IoSlice::new(S), IoSlice::new(S),
-            IoSlice::new(S), IoSlice::new(S), IoSlice::new(S), IoSlice::new(S),
-            IoSlice::new(S), IoSlice::new(S), IoSlice::new(S), IoSlice::new(S),
-            IoSlice::new(S), IoSlice::new(S), IoSlice::new(S), IoSlice::new(S),
-            IoSlice::new(S), IoSlice::new(S), IoSlice::new(S), IoSlice::new(S),
-            IoSlice::new(S), IoSlice::new(S), IoSlice::new(S), IoSlice::new(S),
-            IoSlice::new(S), IoSlice::new(S), IoSlice::new(S), IoSlice::new(S),
-            IoSlice::new(S), IoSlice::new(S), IoSlice::new(S), IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
+            IoSlice::new(S),
         ];
         let cnt = buf.bytes_vectored(&mut slices);
 
@@ -703,11 +754,12 @@ impl TcpStream {
             Ok(n) => {
                 buf.advance(n);
                 Poll::Ready(Ok(n))
-            },
+            }
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 self.io.clear_write_ready(cx)?;
+                debug!(task.pending = true, resource = ?self, "poll_write_buf");
                 Poll::Pending
-            },
+            }
             Err(e) => Poll::Ready(Err(e)),
         }
     }

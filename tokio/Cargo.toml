@@ -47,6 +47,7 @@ full = [
   "time",
 ]
 
+tracing = ["tracing_lib", "tracing-futures"]
 blocking = ["rt-core"]
 dns = ["rt-core"]
 fs = ["rt-core"]
@@ -107,6 +108,9 @@ iovec = { version = "0.1.4", optional = true }
 num_cpus = { version = "1.8.0", optional = true }
 # Backs `DelayQueue`
 slab = { version = "0.4.1", optional = true }
+
+tracing_lib = { package = "tracing", version = "0.1", optional = true }
+tracing-futures = {version = "0.2", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 mio-uds = { version = "0.6.5", optional = true }

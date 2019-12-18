@@ -412,7 +412,6 @@ impl Runtime {
     /// future panics, or if called within an asynchronous execution context.
     pub fn block_on<F: Future>(&mut self, future: F) -> F::Output {
         let kind = &mut self.kind;
-
         self.handle.enter(|| match kind {
             Kind::Shell(exec) => exec.block_on(future),
             #[cfg(feature = "rt-core")]
