@@ -630,7 +630,7 @@ impl TcpStream {
         cx: &mut Context<'_>,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
-        ready!(self.io.poll_read_ready(cx, mio::Ready::readable()))?;
+        ready!(self.io.poll_read_ready(cx, mio::Ready::readable()), resource = ?self, "poll_read")?;
 
         match self.io.get_ref().read(buf) {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
@@ -638,7 +638,10 @@ impl TcpStream {
                 debug!(task.pending = true, resource = ?self, "poll_read");
                 Poll::Pending
             }
-            x => Poll::Ready(x),
+            x => {
+                debug!(task.ready = true, resource = ?self, "poll_accept");
+                Poll::Ready(x)
+            }
         }
     }
 
@@ -647,7 +650,7 @@ impl TcpStream {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
-        ready!(self.io.poll_write_ready(cx))?;
+        ready!(self.io.poll_write_ready(cx), resource = ?self, "poll_write")?;
 
         match self.io.get_ref().write(buf) {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
@@ -656,7 +659,10 @@ impl TcpStream {
                 debug!(task.pending = true, resource = ?self, "poll_write");
                 Poll::Pending
             }
-            x => Poll::Ready(x),
+            x => {
+                debug!(task.ready = true, resource = ?self, "poll_read");
+                Poll::Ready(x)
+            }
         }
     }
 
@@ -667,7 +673,7 @@ impl TcpStream {
     ) -> Poll<io::Result<usize>> {
         use std::io::IoSlice;
 
-        ready!(self.io.poll_write_ready(cx))?;
+        ready!(self.io.poll_write_ready(cx), resource = ?self, "poll_write_buf")?;
 
         // The `IoVec` (v0.1.x) type can't have a zero-length size, so create
         // a dummy version from a 1-length slice which we'll overwrite with
