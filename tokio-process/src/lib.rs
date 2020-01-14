@@ -173,7 +173,7 @@ extern crate tokio_reactor;
 extern crate lazy_static;
 #[cfg(unix)]
 #[macro_use]
-extern crate log;
+extern crate tracing;
 
 use std::io::{self, Read, Write};
 use std::process::{Command, ExitStatus, Output, Stdio};

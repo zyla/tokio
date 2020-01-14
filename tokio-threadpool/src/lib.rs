@@ -90,7 +90,7 @@ extern crate num_cpus;
 extern crate slab;
 
 #[macro_use]
-extern crate log;
+extern crate tracing;
 
 // ## Crate layout
 //

@@ -12,7 +12,7 @@ extern crate futures;
 extern crate iovec;
 extern crate libc;
 #[macro_use]
-extern crate log;
+extern crate tracing;
 extern crate mio;
 extern crate mio_uds;
 extern crate tokio_codec;

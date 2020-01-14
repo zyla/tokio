@@ -10,7 +10,7 @@
 //! [low level details]: https://tokio.rs/docs/going-deeper-tokio/core-low-level/
 
 #[macro_use]
-extern crate log;
+extern crate tracing;
 
 #[macro_use]
 extern crate futures;

@@ -28,7 +28,7 @@ crossbeam-queue = "0.1.0"
 crossbeam-utils = "0.6.4"
 num_cpus = "1.2"
 slab = "0.4.1"
-log = "0.4"
+tracing = "0.1"
 lazy_static = "1"
 
 [dev-dependencies]

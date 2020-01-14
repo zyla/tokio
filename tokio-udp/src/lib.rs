@@ -24,7 +24,7 @@ extern crate bytes;
 extern crate futures;
 extern crate mio;
 #[macro_use]
-extern crate log;
+extern crate tracing;
 extern crate tokio_codec;
 extern crate tokio_io;
 extern crate tokio_reactor;

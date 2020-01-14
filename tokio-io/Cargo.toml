@@ -22,7 +22,7 @@ categories = ["asynchronous"]
 [dependencies]
 bytes = "0.4.7"
 futures = "0.1.18"
-log = "0.4"
+tracing = "0.1"
 
 [dev-dependencies]
 tokio-current-thread = "0.1.1"

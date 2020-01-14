@@ -36,7 +36,7 @@ extern crate futures;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
-extern crate log;
+extern crate tracing;
 extern crate mio;
 extern crate num_cpus;
 extern crate parking_lot;
@@ -77,7 +77,6 @@ use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 use std::{fmt, usize};
 
-use log::Level;
 use mio::event::Evented;
 use slab::Slab;
 
@@ -362,11 +361,13 @@ impl Reactor {
             Err(e) => return Err(e),
         }
 
-        let start = if log_enabled!(Level::Debug) {
-            Some(Instant::now())
-        } else {
-            None
-        };
+        let span = trace_span!("loop process");
+        let _e = span.enter();
+        // let start = if log_enabled!(Level::Debug) {
+        //     Some(Instant::now())
+        // } else {
+        //     None
+        // };
 
         // Process all the events that came in, dispatching appropriately
         let mut events = 0;
@@ -385,15 +386,7 @@ impl Reactor {
             }
         }
 
-        if let Some(start) = start {
-            let dur = start.elapsed();
-            trace!(
-                "loop process - {} events, {}.{:03}s",
-                events,
-                dur.as_secs(),
-                dur.subsec_nanos() / 1_000_000
-            );
-        }
+        trace!("loop process - {} events", events);
 
         Ok(())
     }
