@@ -10,8 +10,8 @@
 //! Consider a future like this one:
 //!
 //! ```
-//! # use tokio::stream::StreamExt;
-//! async fn drop_all<I: Stream>(input: I) {
+//! # use tokio::stream::{Stream, StreamExt};
+//! async fn drop_all<I: Stream + Unpin>(mut input: I) {
 //!     while let Some(_) = input.next().await {}
 //! }
 //! ```
@@ -20,9 +20,9 @@
 //! _always_ ready. If we spawn `drop_all`, the task will never yield, and will starve other tasks
 //! and resources on the same executor. With opt-in yield points, this problem is alleviated:
 //!
-//! ```
-//! # use tokio::stream::StreamExt;
-//! async fn drop_all<I: Stream>(input: I) {
+//! ```ignore
+//! # use tokio::stream::{Stream, StreamExt};
+//! async fn drop_all<I: Stream + Unpin>(mut input: I) {
 //!     while let Some(_) = input.next().await {
 //!         tokio::league::cooperate().await;
 //!     }
@@ -37,6 +37,8 @@
 //! Voluntary yield points should be placed _after_ at least some work has been done. If they are
 //! not, a future sufficiently deep in the task hierarchy may end up _never_ getting to run because
 //! of the number of yield points that inevitably appear before it is reached.
+
+// NOTE: The doctests in this module are ignored since the whole module is (currently) private.
 
 use std::cell::Cell;
 use std::task::{Context, Poll};
@@ -98,9 +100,9 @@ pub fn poll_cooperate(cx: &mut Context<'_>) -> Poll<()> {
 /// deep in the task hierarchy may end up never getting to run because of the number of yield
 /// points that inevitably appear before it is even reached. For example:
 ///
-/// ```
-/// # use tokio::stream::StreamExt;
-/// async fn drop_all<I: Stream>(input: I) {
+/// ```ignore
+/// # use tokio::stream::{Stream, StreamExt};
+/// async fn drop_all<I: Stream + Unpin>(mut input: I) {
 ///     while let Some(_) = input.next().await {
 ///         tokio::league::cooperate().await;
 ///     }
