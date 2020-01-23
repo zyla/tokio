@@ -260,7 +260,7 @@ cfg_rt_core! {
     mod yield_now;
     pub use yield_now::yield_now;
 
-    pub mod preemption;
+    pub(crate) mod preemption;
 }
 
 cfg_rt_util! {

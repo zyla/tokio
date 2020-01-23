@@ -64,6 +64,7 @@ pub(crate) fn yielded() {
 }
 
 /// Returns `Poll::Pending` if the current task has exceeded its preemption budget and should yield.
+#[allow(unreachable_pub)]
 pub fn poll(cx: &mut Context<'_>) -> Poll<()> {
     HITS.with(|hits| {
         let n = hits.get();
@@ -91,6 +92,7 @@ pub fn poll(cx: &mut Context<'_>) -> Poll<()> {
 ///     }
 /// }
 /// ```
+#[allow(unreachable_pub)]
 pub async fn check() {
     use crate::future::poll_fn;
     poll_fn(|cx| poll(cx)).await;
