@@ -64,7 +64,7 @@ pub(crate) fn ceded() {
 }
 
 /// Returns `Poll::Pending` if the current task has exceeded its budget and should yield.
-#[allow(unreachable_pub)]
+#[allow(unreachable_pub, dead_code)]
 pub fn poll_cooperate(cx: &mut Context<'_>) -> Poll<()> {
     HITS.with(|hits| {
         let n = hits.get();
@@ -92,7 +92,7 @@ pub fn poll_cooperate(cx: &mut Context<'_>) -> Poll<()> {
 ///     }
 /// }
 /// ```
-#[allow(unreachable_pub)]
+#[allow(unreachable_pub, dead_code)]
 pub async fn cooperate() {
     use crate::future::poll_fn;
     poll_fn(|cx| poll_cooperate(cx)).await;
