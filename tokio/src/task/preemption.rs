@@ -24,21 +24,19 @@
 //! # use tokio::stream::StreamExt;
 //! async fn drop_all<I: Stream>(input: I) {
 //!     while let Some(_) = input.next().await {
-//!         tokio::preempt_check!();
+//!         tokio::preemption::check().await;
 //!     }
 //! }
 //! ```
 //!
-//! The call to [`preempt_check!`] will coordinate with the executor to make sure that every so
-//! often control is yielded back to the executor so it can run other tasks.
+//! The [`check`] future will coordinate with the executor to make sure that every so often control
+//! is yielded back to the executor so it can run other tasks.
 //!
 //! # Placing preemption points
 //!
 //! Preemption points should be placed _after_ at least some work has been done. If they are not, a
 //! future sufficiently deep in the task hierarchy may end up _never_ getting to run because of the
 //! number of preemption points that inevitably appear before it is reached.
-//!
-//!   [`preempt_check!`]: ../../macro.check.html
 
 use std::cell::Cell;
 use std::task::{Context, Poll};
@@ -79,37 +77,21 @@ pub fn poll(cx: &mut Context<'_>) -> Poll<()> {
     })
 }
 
-#[doc(hidden)]
-pub async fn maybe_yield() {
-    use crate::future::poll_fn;
-    poll_fn(|cx| poll(cx)).await;
-}
-
-/// Yield if this `async` block's task has exceeded its preemption budget.
-#[macro_export]
-macro_rules! preempt_check {
-    () => {
-        $crate::task::preemption::maybe_yield().await
-    };
-}
-
-/// Return `Poll::Pending` if this future's task has exceeded its preemption budget.
+/// Resolves immediately unless the current task has already exceeded its preemption budget.
 ///
-/// This method is for use in `poll`-style methods. If you are using it in an `async` block or
-/// function, use [`preempt_check!`] instead. This method is a convenient shorthand for
+/// This should be placed after at least some work has been done. Otherwise a future sufficiently
+/// deep in the task hierarchy may end up never getting to run because of the number of preemption
+/// points that inevitably appear before it is even reached. For example:
 ///
-/// ```rust,ignore
-/// if let Poll::Pending = preemption::poll(cx) {
-///     return Poll::Pending;
+/// ```
+/// # use tokio::stream::StreamExt;
+/// async fn drop_all<I: Stream>(input: I) {
+///     while let Some(_) = input.next().await {
+///         tokio::preemption::check().await;
+///     }
 /// }
 /// ```
-///
-///   [`preempt_check!`]: macro.preempt_check.html
-#[macro_export]
-macro_rules! preempt_marker {
-    ($cx:expr) => {
-        if let Poll::Pending = $crate::task::preemption::poll($cx) {
-            return Poll::Pending
-        }
-    };
+pub async fn check() {
+    use crate::future::poll_fn;
+    poll_fn(|cx| poll(cx)).await;
 }
