@@ -1,6 +1,5 @@
 use crate::loom::alloc::Track;
 use crate::loom::cell::CausalCheck;
-use crate::preemption;
 use crate::task::core::{Cell, Core, Header, Trailer};
 use crate::task::state::Snapshot;
 use crate::task::{JoinError, Schedule, Task};
@@ -127,8 +126,8 @@ where
             }))
         });
 
-        // The task yielded, so we restore its preemption budget.
-        preemption::yielded();
+        // The task yielded, so we restore its budget.
+        crate::league::ceded();
 
         match res {
             Ok(Poll::Ready(out)) => {

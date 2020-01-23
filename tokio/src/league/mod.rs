@@ -1,4 +1,4 @@
-//! Opt-in preeemption points for improved cooperative scheduling.
+//! Opt-in yield points for improved cooperative scheduling.
 //!
 //! A single call to `poll` on a top-level task may potentially do a lot of work before it returns
 //! `Poll::Pending`. If a task runs for a long period of time without yielding back to the
@@ -18,13 +18,13 @@
 //!
 //! It may look harmless, but consider what happens under heavy load if the input stream is
 //! _always_ ready. If we spawn `drop_all`, the task will never yield, and will starve other tasks
-//! and resources on the same executor. With opt-in preemption, this problem is alleviated:
+//! and resources on the same executor. With opt-in yield points, this problem is alleviated:
 //!
 //! ```
 //! # use tokio::stream::StreamExt;
 //! async fn drop_all<I: Stream>(input: I) {
 //!     while let Some(_) = input.next().await {
-//!         tokio::preemption::check().await;
+//!         tokio::league::cooperate().await;
 //!     }
 //! }
 //! ```
@@ -32,11 +32,11 @@
 //! The [`check`] future will coordinate with the executor to make sure that every so often control
 //! is yielded back to the executor so it can run other tasks.
 //!
-//! # Placing preemption points
+//! # Placing yield points
 //!
-//! Preemption points should be placed _after_ at least some work has been done. If they are not, a
-//! future sufficiently deep in the task hierarchy may end up _never_ getting to run because of the
-//! number of preemption points that inevitably appear before it is reached.
+//! Voluntary yield points should be placed _after_ at least some work has been done. If they are
+//! not, a future sufficiently deep in the task hierarchy may end up _never_ getting to run because
+//! of the number of yield points that inevitably appear before it is reached.
 
 use std::cell::Cell;
 use std::task::{Context, Poll};
@@ -48,24 +48,24 @@ use std::task::{Context, Poll};
 /// also needs to be high enough that particularly deep tasks are able to do at least some useful
 /// work at all.
 ///
-/// Note that as more preemption points are added in the ecosystem, this value will probably also
-/// have to be raised.
+/// Note that as more yield points are added in the ecosystem, this value will probably also have
+/// to be raised.
 const BUDGET: usize = 128;
 
 thread_local! {
     static HITS: Cell<usize> = Cell::new(0);
 }
 
-/// Mark that the top-level task yielded, and that the preemption budget should be reset.
-pub(crate) fn yielded() {
+/// Mark that the top-level task yielded, and that the budget should be reset.
+pub(crate) fn ceded() {
     HITS.with(|hits| {
         hits.set(BUDGET);
     });
 }
 
-/// Returns `Poll::Pending` if the current task has exceeded its preemption budget and should yield.
+/// Returns `Poll::Pending` if the current task has exceeded its budget and should yield.
 #[allow(unreachable_pub)]
-pub fn poll(cx: &mut Context<'_>) -> Poll<()> {
+pub fn poll_cooperate(cx: &mut Context<'_>) -> Poll<()> {
     HITS.with(|hits| {
         let n = hits.get();
         if n == 0 {
@@ -78,22 +78,22 @@ pub fn poll(cx: &mut Context<'_>) -> Poll<()> {
     })
 }
 
-/// Resolves immediately unless the current task has already exceeded its preemption budget.
+/// Resolves immediately unless the current task has already exceeded its budget.
 ///
 /// This should be placed after at least some work has been done. Otherwise a future sufficiently
-/// deep in the task hierarchy may end up never getting to run because of the number of preemption
+/// deep in the task hierarchy may end up never getting to run because of the number of yield
 /// points that inevitably appear before it is even reached. For example:
 ///
 /// ```
 /// # use tokio::stream::StreamExt;
 /// async fn drop_all<I: Stream>(input: I) {
 ///     while let Some(_) = input.next().await {
-///         tokio::preemption::check().await;
+///         tokio::league::cooperate().await;
 ///     }
 /// }
 /// ```
 #[allow(unreachable_pub)]
-pub async fn check() {
+pub async fn cooperate() {
     use crate::future::poll_fn;
-    poll_fn(|cx| poll(cx)).await;
+    poll_fn(|cx| poll_cooperate(cx)).await;
 }
