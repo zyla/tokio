@@ -50,6 +50,7 @@ use std::task::{Context, Poll};
 ///
 /// Note that as more yield points are added in the ecosystem, this value will probably also have
 /// to be raised.
+#[allow(dead_code)]
 const BUDGET: usize = 128;
 
 thread_local! {
@@ -57,6 +58,7 @@ thread_local! {
 }
 
 /// Mark that the top-level task yielded, and that the budget should be reset.
+#[allow(dead_code)]
 pub(crate) fn ceded() {
     HITS.with(|hits| {
         hits.set(BUDGET);
