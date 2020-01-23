@@ -265,6 +265,9 @@ where
     pub(crate) fn recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<T>> {
         use super::block::Read::*;
 
+        // Keep track of task budget
+        ready!(crate::league::poll_cooperate(cx));
+
         self.inner.rx_fields.with_mut(|rx_fields_ptr| {
             let rx_fields = unsafe { &mut *rx_fields_ptr };
 

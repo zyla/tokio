@@ -102,6 +102,9 @@ impl<T> Future for JoinHandle<T> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         use std::mem::MaybeUninit;
 
+        // Keep track of task budget
+        ready!(crate::league::poll_cooperate(cx));
+
         // Raw should always be set
         let raw = self.raw.as_ref().unwrap();
 
