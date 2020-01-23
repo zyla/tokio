@@ -50,6 +50,8 @@ impl Shell {
                 return v;
             }
 
+            crate::league::ceded();
+
             self.driver.park().unwrap();
         }
     }

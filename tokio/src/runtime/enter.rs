@@ -102,6 +102,8 @@ cfg_blocking_impl! {
                     return Ok(v);
                 }
 
+                crate::league::ceded();
+
                 park.park()?;
             }
         }

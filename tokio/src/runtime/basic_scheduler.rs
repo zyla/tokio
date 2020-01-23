@@ -139,6 +139,8 @@ where
                 return v;
             }
 
+            crate::league::ceded();
+
             scheduler.tick(local);
 
             // Maintenance work
