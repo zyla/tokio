@@ -2,7 +2,7 @@ use crate::loom::alloc::Track;
 use crate::loom::cell::CausalCheck;
 use crate::task::core::{Cell, Core, Header, Trailer};
 use crate::task::state::Snapshot;
-use crate::task::{JoinError, Schedule, Task};
+use crate::task::{preemption, JoinError, Schedule, Task};
 
 use std::future::Future;
 use std::marker::PhantomData;
@@ -125,6 +125,9 @@ where
                 res
             }))
         });
+
+        // The task yielded, so we restore its preemption budget.
+        preemption::yielded();
 
         match res {
             Ok(Poll::Ready(out)) => {

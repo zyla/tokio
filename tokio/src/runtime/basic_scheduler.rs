@@ -1,7 +1,5 @@
 use crate::park::{Park, Unpark};
-use crate::task::{
-    self, preemption, queue::MpscQueues, JoinHandle, Schedule, ScheduleSendOnly, Task,
-};
+use crate::task::{self, queue::MpscQueues, JoinHandle, Schedule, ScheduleSendOnly, Task};
 
 use std::cell::Cell;
 use std::fmt;
@@ -199,8 +197,6 @@ impl SchedulerPriv {
                     self.queues.push_local(task);
                 }
             }
-
-            preemption::yielded();
         }
 
         local
