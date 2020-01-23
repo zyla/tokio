@@ -32,6 +32,7 @@ pub(crate) fn try_enter() -> Option<Enter> {
             None
         } else {
             c.set(true);
+            crate::league::opt_in();
             Some(Enter { _p: PhantomData })
         }
     })

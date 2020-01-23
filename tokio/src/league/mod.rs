@@ -54,12 +54,21 @@ use std::task::{Context, Poll};
 const BUDGET: usize = 128;
 
 thread_local! {
-    static HITS: Cell<usize> = Cell::new(0);
+    static HITS: Cell<usize> = Cell::new(usize::max_value());
 }
 
 /// Mark that the top-level task yielded, and that the budget should be reset.
 #[allow(dead_code)]
 pub(crate) fn ceded() {
+    HITS.with(|hits| {
+        if hits.get() != usize::max_value() {
+            hits.set(BUDGET);
+        }
+    });
+}
+
+#[allow(dead_code)]
+pub(crate) fn opt_in() {
     HITS.with(|hits| {
         hits.set(BUDGET);
     });
@@ -70,7 +79,10 @@ pub(crate) fn ceded() {
 pub fn poll_cooperate(cx: &mut Context<'_>) -> Poll<()> {
     HITS.with(|hits| {
         let n = hits.get();
-        if n == 0 {
+        if n == usize::max_value() {
+            // opted out of budgeting
+            Poll::Ready(())
+        } else if n == 0 {
             cx.waker().wake_by_ref();
             Poll::Pending
         } else {
