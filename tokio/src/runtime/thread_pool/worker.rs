@@ -4,7 +4,7 @@ use crate::park::Park;
 use crate::runtime;
 use crate::runtime::park::Parker;
 use crate::runtime::thread_pool::{current, slice, Owned, Shared};
-use crate::task::Task;
+use crate::task::{preemption, Task};
 
 use std::cell::Cell;
 use std::marker::PhantomData;
@@ -463,6 +463,7 @@ impl GenerationGuard<'_> {
 
             Err(WorkerGone)
         } else {
+            preemption::yielded();
             if let Some(task) = task {
                 self.owned().submit_local_yield(task);
                 self.slices().notify_work();
