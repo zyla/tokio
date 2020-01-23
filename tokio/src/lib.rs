@@ -311,6 +311,8 @@ cfg_process! {
 
 pub mod runtime;
 
+pub(crate) mod preemption;
+
 cfg_signal! {
     pub mod signal;
 }
