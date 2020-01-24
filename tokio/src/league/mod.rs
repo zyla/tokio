@@ -222,7 +222,7 @@ pub async fn cooperate() {
     poll_fn(|cx| poll_cooperate(cx)).await;
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(loom)))]
 mod test {
     use super::*;
 
