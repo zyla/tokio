@@ -221,3 +221,53 @@ pub async fn cooperate() {
     use crate::future::poll_fn;
     poll_fn(|cx| poll_cooperate(cx)).await;
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn get() -> usize {
+        HITS.with(|hits| hits.get())
+    }
+
+    #[test]
+    fn bugeting() {
+        use tokio_test::*;
+
+        assert_eq!(get(), usize::max_value());
+        assert_ready!(task::spawn(()).enter(|cx, _| poll_cooperate(cx)));
+        assert_eq!(get(), usize::max_value());
+        opt_in();
+        assert_eq!(get(), BUDGET);
+        opt_in();
+        assert_eq!(get(), BUDGET);
+        assert_ready!(task::spawn(()).enter(|cx, _| poll_cooperate(cx)));
+        assert_eq!(get(), BUDGET - 1);
+        assert_ready!(task::spawn(()).enter(|cx, _| poll_cooperate(cx)));
+        assert_eq!(get(), BUDGET - 2);
+        ceded();
+        assert_eq!(get(), BUDGET);
+        grant(3, || {
+            assert_eq!(get(), 3);
+            assert_ready!(task::spawn(()).enter(|cx, _| poll_cooperate(cx)));
+            assert_eq!(get(), 2);
+            grant(4, || {
+                assert_eq!(get(), 2);
+                assert_ready!(task::spawn(()).enter(|cx, _| poll_cooperate(cx)));
+                assert_eq!(get(), 1);
+            });
+            assert_eq!(get(), 1);
+            assert_ready!(task::spawn(()).enter(|cx, _| poll_cooperate(cx)));
+            assert_eq!(get(), 0);
+            assert_pending!(task::spawn(()).enter(|cx, _| poll_cooperate(cx)));
+            assert_eq!(get(), 0);
+            assert_pending!(task::spawn(()).enter(|cx, _| poll_cooperate(cx)));
+            assert_eq!(get(), 0);
+        });
+        assert_eq!(get(), BUDGET - 3);
+        assert_ready!(task::spawn(()).enter(|cx, _| poll_cooperate(cx)));
+        assert_eq!(get(), BUDGET - 4);
+        assert_ready!(task::spawn(cooperate()).poll());
+        assert_eq!(get(), BUDGET - 5);
+    }
+}
