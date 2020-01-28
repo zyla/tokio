@@ -427,6 +427,9 @@ impl Semaphore for (crate::sync::semaphore_ll::Semaphore, usize) {
         cx: &mut Context<'_>,
         permit: &mut Permit,
     ) -> Poll<Result<(), ClosedError>> {
+        // Keep track of task budget
+        ready!(crate::coop::poll_proceed(cx));
+
         permit
             .poll_acquire(cx, 1, &self.0)
             .map_err(|_| ClosedError::new())
