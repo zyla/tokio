@@ -36,11 +36,11 @@ pub mod error {
     use std::fmt;
 
     /// Error returned by the `Future` implementation for `Receiver`.
-    #[derive(Debug)]
+    #[derive(Debug, Eq, PartialEq)]
     pub struct RecvError(pub(super) ());
 
     /// Error returned by the `try_recv` function on `Receiver`.
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Eq, PartialEq)]
     pub enum TryRecvError {
         /// The send half of the channel has not yet sent a value.
         Empty,
@@ -240,7 +240,7 @@ impl<T> Sender<T> {
         Pending
     }
 
-    /// Wait for the associated [`Receiver`] handle to close.
+    /// Waits for the associated [`Receiver`] handle to close.
     ///
     /// A [`Receiver`] is closed by either calling [`close`] explicitly or the
     /// [`Receiver`] value is dropped.
@@ -357,7 +357,7 @@ impl<T> Drop for Sender<T> {
 }
 
 impl<T> Receiver<T> {
-    /// Prevent the associated [`Sender`] handle from sending a value.
+    /// Prevents the associated [`Sender`] handle from sending a value.
     ///
     /// Any `send` operation which happens after calling `close` is guaranteed
     /// to fail. After calling `close`, `Receiver::poll`] should be called to
@@ -616,7 +616,7 @@ impl<T> Inner<T> {
         }
     }
 
-    /// Consume the value. This function does not check `state`.
+    /// Consumes the value. This function does not check `state`.
     unsafe fn consume_value(&self) -> Option<T> {
         self.value.with_mut(|ptr| (*ptr).take())
     }

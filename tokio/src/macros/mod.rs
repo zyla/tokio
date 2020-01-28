@@ -8,19 +8,28 @@ mod assert;
 mod cfg;
 
 #[macro_use]
+mod join;
+
+#[macro_use]
 mod loom;
+
+#[macro_use]
+mod pin;
 
 #[macro_use]
 mod ready;
 
-#[macro_use]
-mod select;
+cfg_macros! {
+    #[macro_use]
+    mod select;
+}
 
 #[macro_use]
 mod thread_local;
 
-cfg_macros! {
-    // Includes re-exports needed to implement macros
-    #[doc(hidden)]
-    pub mod support;
-}
+#[macro_use]
+mod try_join;
+
+// Includes re-exports needed to implement macros
+#[doc(hidden)]
+pub mod support;
