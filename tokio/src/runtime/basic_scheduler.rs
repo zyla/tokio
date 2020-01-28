@@ -139,7 +139,7 @@ where
                 return v;
             }
 
-            crate::league::ceded();
+            crate::coop::executor_tick();
 
             scheduler.tick(local);
 

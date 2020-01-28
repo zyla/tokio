@@ -321,7 +321,7 @@ cfg_process! {
 
 pub mod runtime;
 
-pub(crate) mod league;
+pub(crate) mod coop;
 
 cfg_signal! {
     pub mod signal;

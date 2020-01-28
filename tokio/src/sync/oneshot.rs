@@ -197,7 +197,7 @@ impl<T> Sender<T> {
     #[doc(hidden)] // TODO: remove
     pub fn poll_closed(&mut self, cx: &mut Context<'_>) -> Poll<()> {
         // Keep track of task budget
-        ready!(crate::league::poll_cooperate(cx));
+        ready!(crate::coop::poll_proceed(cx));
 
         let inner = self.inner.as_ref().unwrap();
 
@@ -548,7 +548,7 @@ impl<T> Inner<T> {
 
     fn poll_recv(&self, cx: &mut Context<'_>) -> Poll<Result<T, RecvError>> {
         // Keep track of task budget
-        ready!(crate::league::poll_cooperate(cx));
+        ready!(crate::coop::poll_proceed(cx));
 
         // Load the state
         let mut state = State::load(&self.state, Acquire);

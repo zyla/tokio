@@ -24,7 +24,7 @@
 //! # use tokio::stream::{Stream, StreamExt};
 //! async fn drop_all<I: Stream + Unpin>(mut input: I) {
 //!     while let Some(_) = input.next().await {
-//!         tokio::league::cooperate().await;
+//!         tokio::coop::proceed().await;
 //!     }
 //! }
 //! ```
@@ -61,7 +61,7 @@ thread_local! {
 
 /// Mark that the top-level task yielded, and that the budget should be reset.
 #[allow(dead_code)]
-pub(crate) fn ceded() {
+pub(crate) fn executor_tick() {
     HITS.with(|hits| {
         if hits.get() != usize::max_value() {
             hits.set(BUDGET);
@@ -118,7 +118,7 @@ pub(crate) fn opt_in() {
 ///
 /// It could be that every time `poll` gets called, `big` ends up spending the entire budget, and
 /// `small` never gets polled. That would be sad. If you want to stick up for the little future,
-/// that's what `grant` is for. It lets you portion out a smaller part of the yield budget to a
+/// that's what `limit` is for. It lets you portion out a smaller part of the yield budget to a
 /// particular segment of your code. In the code above, you would write
 ///
 /// ```rust,ignore
@@ -141,7 +141,7 @@ pub(crate) fn opt_in() {
 /// #   let small = Pin::new(&mut this.small);
 /// #
 ///     // see if any of the big futures have finished
-///     while let Some(e) = futures::ready!(tokio::league::grant(64, || big.as_mut().poll_next(cx))) {
+///     while let Some(e) = futures::ready!(tokio::coop::limit(64, || big.as_mut().poll_next(cx))) {
 /// #       // do something with e
 /// #       let _ = e;
 /// #   }
@@ -155,11 +155,11 @@ pub(crate) fn opt_in() {
 /// `small` will have at least a budget of `N - 64`. It may be more if `big` did not spend its
 /// entire budget.
 ///
-/// Note that you cannot _increase_ your budget by calling `grant`. The budget granted to the code
+/// Note that you cannot _increase_ your budget by calling `limit`. The budget provided to the code
 /// inside the buget is the _minimum_ of the _current_ budget and the bound.
 ///
 #[allow(unreachable_pub, dead_code)]
-pub fn grant<F, R>(bound: usize, f: F) -> R
+pub fn limit<F, R>(bound: usize, f: F) -> R
 where
     F: FnOnce() -> R,
 {
@@ -186,7 +186,7 @@ where
 
 /// Returns `Poll::Pending` if the current task has exceeded its budget and should yield.
 #[allow(unreachable_pub, dead_code)]
-pub fn poll_cooperate(cx: &mut Context<'_>) -> Poll<()> {
+pub fn poll_proceed(cx: &mut Context<'_>) -> Poll<()> {
     HITS.with(|hits| {
         let n = hits.get();
         if n == usize::max_value() {
@@ -212,14 +212,14 @@ pub fn poll_cooperate(cx: &mut Context<'_>) -> Poll<()> {
 /// # use tokio::stream::{Stream, StreamExt};
 /// async fn drop_all<I: Stream + Unpin>(mut input: I) {
 ///     while let Some(_) = input.next().await {
-///         tokio::league::cooperate().await;
+///         tokio::coop::proceed().await;
 ///     }
 /// }
 /// ```
 #[allow(unreachable_pub, dead_code)]
-pub async fn cooperate() {
+pub async fn proceed() {
     use crate::future::poll_fn;
-    poll_fn(|cx| poll_cooperate(cx)).await;
+    poll_fn(|cx| poll_proceed(cx)).await;
 }
 
 #[cfg(all(test, not(loom)))]
@@ -235,39 +235,39 @@ mod test {
         use tokio_test::*;
 
         assert_eq!(get(), usize::max_value());
-        assert_ready!(task::spawn(()).enter(|cx, _| poll_cooperate(cx)));
+        assert_ready!(task::spawn(()).enter(|cx, _| poll_proceed(cx)));
         assert_eq!(get(), usize::max_value());
         opt_in();
         assert_eq!(get(), BUDGET);
         opt_in();
         assert_eq!(get(), BUDGET);
-        assert_ready!(task::spawn(()).enter(|cx, _| poll_cooperate(cx)));
+        assert_ready!(task::spawn(()).enter(|cx, _| poll_proceed(cx)));
         assert_eq!(get(), BUDGET - 1);
-        assert_ready!(task::spawn(()).enter(|cx, _| poll_cooperate(cx)));
+        assert_ready!(task::spawn(()).enter(|cx, _| poll_proceed(cx)));
         assert_eq!(get(), BUDGET - 2);
-        ceded();
+        executor_tick();
         assert_eq!(get(), BUDGET);
-        grant(3, || {
+        limit(3, || {
             assert_eq!(get(), 3);
-            assert_ready!(task::spawn(()).enter(|cx, _| poll_cooperate(cx)));
+            assert_ready!(task::spawn(()).enter(|cx, _| poll_proceed(cx)));
             assert_eq!(get(), 2);
-            grant(4, || {
+            limit(4, || {
                 assert_eq!(get(), 2);
-                assert_ready!(task::spawn(()).enter(|cx, _| poll_cooperate(cx)));
+                assert_ready!(task::spawn(()).enter(|cx, _| poll_proceed(cx)));
                 assert_eq!(get(), 1);
             });
             assert_eq!(get(), 1);
-            assert_ready!(task::spawn(()).enter(|cx, _| poll_cooperate(cx)));
+            assert_ready!(task::spawn(()).enter(|cx, _| poll_proceed(cx)));
             assert_eq!(get(), 0);
-            assert_pending!(task::spawn(()).enter(|cx, _| poll_cooperate(cx)));
+            assert_pending!(task::spawn(()).enter(|cx, _| poll_proceed(cx)));
             assert_eq!(get(), 0);
-            assert_pending!(task::spawn(()).enter(|cx, _| poll_cooperate(cx)));
+            assert_pending!(task::spawn(()).enter(|cx, _| poll_proceed(cx)));
             assert_eq!(get(), 0);
         });
         assert_eq!(get(), BUDGET - 3);
-        assert_ready!(task::spawn(()).enter(|cx, _| poll_cooperate(cx)));
+        assert_ready!(task::spawn(()).enter(|cx, _| poll_proceed(cx)));
         assert_eq!(get(), BUDGET - 4);
-        assert_ready!(task::spawn(cooperate()).poll());
+        assert_ready!(task::spawn(proceed()).poll());
         assert_eq!(get(), BUDGET - 5);
     }
 }

@@ -50,7 +50,7 @@ impl Shell {
                 return v;
             }
 
-            crate::league::ceded();
+            crate::coop::executor_tick();
 
             self.driver.park().unwrap();
         }

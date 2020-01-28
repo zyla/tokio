@@ -40,7 +40,7 @@ impl Registration {
 
     pub(crate) fn poll_elapsed(&self, cx: &mut task::Context<'_>) -> Poll<Result<(), Error>> {
         // Keep track of task budget
-        ready!(crate::league::poll_cooperate(cx));
+        ready!(crate::coop::poll_proceed(cx));
 
         self.entry.poll_elapsed(cx)
     }

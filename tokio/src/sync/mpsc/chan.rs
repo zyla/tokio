@@ -266,7 +266,7 @@ where
         use super::block::Read::*;
 
         // Keep track of task budget
-        ready!(crate::league::poll_cooperate(cx));
+        ready!(crate::coop::poll_proceed(cx));
 
         self.inner.rx_fields.with_mut(|rx_fields_ptr| {
             let rx_fields = unsafe { &mut *rx_fields_ptr };

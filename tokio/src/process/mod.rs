@@ -701,7 +701,7 @@ where
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         // Keep track of task budget
-        ready!(crate::league::poll_cooperate(cx));
+        ready!(crate::coop::poll_proceed(cx));
 
         let ret = Pin::new(&mut self.inner).poll(cx);
 

@@ -32,7 +32,7 @@ pub(crate) fn try_enter() -> Option<Enter> {
             None
         } else {
             c.set(true);
-            crate::league::opt_in();
+            crate::coop::opt_in();
             Some(Enter { _p: PhantomData })
         }
     })
@@ -102,7 +102,7 @@ cfg_blocking_impl! {
                     return Ok(v);
                 }
 
-                crate::league::ceded();
+                crate::coop::executor_tick();
 
                 park.park()?;
             }

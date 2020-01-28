@@ -103,7 +103,7 @@ impl<T> Future for JoinHandle<T> {
         use std::mem::MaybeUninit;
 
         // Keep track of task budget
-        ready!(crate::league::poll_cooperate(cx));
+        ready!(crate::coop::poll_proceed(cx));
 
         // Raw should always be set
         let raw = self.raw.as_ref().unwrap();

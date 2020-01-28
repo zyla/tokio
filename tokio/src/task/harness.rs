@@ -127,7 +127,7 @@ where
         });
 
         // The task yielded, so we restore its budget.
-        crate::league::ceded();
+        crate::coop::executor_tick();
 
         match res {
             Ok(Poll::Ready(out)) => {

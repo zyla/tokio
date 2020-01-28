@@ -186,7 +186,7 @@ impl Semaphore {
         permit: &mut Permit,
     ) -> Poll<Result<(), AcquireError>> {
         // Keep track of task budget
-        ready!(crate::league::poll_cooperate(cx));
+        ready!(crate::coop::poll_proceed(cx));
 
         self.poll_acquire2(num_permits, || {
             let waiter = permit.waiter.get_or_insert_with(|| Box::new(Waiter::new()));
@@ -634,7 +634,7 @@ impl Permit {
         match self.state {
             Waiting(requested) => {
                 // Keep track of task budget
-                ready!(crate::league::poll_cooperate(cx));
+                ready!(crate::coop::poll_proceed(cx));
 
                 // There must be a waiter
                 let waiter = self.waiter.as_ref().unwrap();
