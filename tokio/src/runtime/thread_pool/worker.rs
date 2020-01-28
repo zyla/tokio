@@ -215,6 +215,10 @@ impl Worker {
         // make sure no subsequent code thinks that it is on a worker
         current::clear();
 
+        // and that we do not apply budgeting if the user ends up invoking
+        // another executor (like doing a synchronous block_on)
+        crate::coop::opt_out();
+
         // Track that the worker is gone
         self.gone.set(true);
 

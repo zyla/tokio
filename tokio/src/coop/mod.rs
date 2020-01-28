@@ -76,6 +76,13 @@ pub(crate) fn opt_in() {
     });
 }
 
+#[allow(dead_code)]
+pub(crate) fn opt_out() {
+    HITS.with(|hits| {
+        hits.set(usize::max_value());
+    });
+}
+
 /// Invoke `f` with a subset of the remaining budget.
 ///
 /// This is useful if you have sub-futures that you need to poll, but that you want to restrict

@@ -295,6 +295,10 @@ where
                 self.local.park.park().ok().expect("park failed");
             }
         }
+
+        // Remove any budgeting constraints in case later code
+        // on the same thread decides to _also_ poll futures
+        crate::coop::opt_out();
     }
 }
 
