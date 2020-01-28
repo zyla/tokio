@@ -405,12 +405,17 @@ impl Runtime {
     pub fn block_on<F: Future>(&mut self, future: F) -> F::Output {
         let kind = &mut self.kind;
 
-        self.handle.enter(|| match kind {
-            Kind::Shell(exec) => exec.block_on(future),
-            #[cfg(feature = "rt-core")]
-            Kind::Basic(exec) => exec.block_on(future),
-            #[cfg(feature = "rt-threaded")]
-            Kind::ThreadPool(exec) => exec.block_on(future),
+        self.handle.enter(|| {
+            crate::coop::opt_in();
+            let result = match kind {
+                Kind::Shell(exec) => exec.block_on(future),
+                #[cfg(feature = "rt-core")]
+                Kind::Basic(exec) => exec.block_on(future),
+                #[cfg(feature = "rt-threaded")]
+                Kind::ThreadPool(exec) => exec.block_on(future),
+            };
+            crate::coop::opt_out();
+            result
         })
     }
 
