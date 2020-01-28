@@ -29,7 +29,7 @@
 //! }
 //! ```
 //!
-//! The [`check`] future will coordinate with the executor to make sure that every so often control
+//! The `proceed` future will coordinate with the executor to make sure that every so often control
 //! is yielded back to the executor so it can run other tasks.
 //!
 //! # Placing yield points
