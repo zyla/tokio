@@ -20,7 +20,7 @@
 //! _always_ ready. If we spawn `drop_all`, the task will never yield, and will starve other tasks
 //! and resources on the same executor. With opt-in yield points, this problem is alleviated:
 //!
-//! ```ignore
+//! ```
 //! # use tokio::stream::{Stream, StreamExt};
 //! async fn drop_all<I: Stream + Unpin>(mut input: I) {
 //!     while let Some(_) = input.next().await {
@@ -37,8 +37,6 @@
 //! Voluntary yield points should be placed _after_ at least some work has been done. If they are
 //! not, a future sufficiently deep in the task hierarchy may end up _never_ getting to run because
 //! of the number of yield points that inevitably appear before it is reached.
-
-// NOTE: The doctests in this module are ignored since the whole module is (currently) private.
 
 use std::cell::Cell;
 use std::task::{Context, Poll};
@@ -128,7 +126,7 @@ pub(crate) fn opt_out() {
 /// that's what `limit` is for. It lets you portion out a smaller part of the yield budget to a
 /// particular segment of your code. In the code above, you would write
 ///
-/// ```rust,ignore
+/// ```rust
 /// # use std::{future::Future, pin::Pin, task::{Context, Poll}};
 /// # use futures::stream::FuturesUnordered;
 /// # struct MyFuture<F1, F2> {
@@ -165,7 +163,7 @@ pub(crate) fn opt_out() {
 /// Note that you cannot _increase_ your budget by calling `limit`. The budget provided to the code
 /// inside the buget is the _minimum_ of the _current_ budget and the bound.
 ///
-#[allow(unreachable_pub, dead_code)]
+#[allow(dead_code)]
 pub fn limit<F, R>(bound: usize, f: F) -> R
 where
     F: FnOnce() -> R,
@@ -192,7 +190,7 @@ where
 }
 
 /// Returns `Poll::Pending` if the current task has exceeded its budget and should yield.
-#[allow(unreachable_pub, dead_code)]
+#[allow(dead_code)]
 pub fn poll_proceed(cx: &mut Context<'_>) -> Poll<()> {
     HITS.with(|hits| {
         let n = hits.get();
@@ -215,7 +213,7 @@ pub fn poll_proceed(cx: &mut Context<'_>) -> Poll<()> {
 /// deep in the task hierarchy may end up never getting to run because of the number of yield
 /// points that inevitably appear before it is even reached. For example:
 ///
-/// ```ignore
+/// ```
 /// # use tokio::stream::{Stream, StreamExt};
 /// async fn drop_all<I: Stream + Unpin>(mut input: I) {
 ///     while let Some(_) = input.next().await {
@@ -223,7 +221,7 @@ pub fn poll_proceed(cx: &mut Context<'_>) -> Poll<()> {
 ///     }
 /// }
 /// ```
-#[allow(unreachable_pub, dead_code)]
+#[allow(dead_code)]
 pub async fn proceed() {
     use crate::future::poll_fn;
     poll_fn(|cx| poll_proceed(cx)).await;
