@@ -220,10 +220,6 @@ impl Inner {
 
             }
 
-            if shared.shutdown {
-                break; // Need to increment idle before we exit
-            }
-
             // IDLE
             shared.num_idle += 1;
 
