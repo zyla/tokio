@@ -146,7 +146,7 @@ cfg_dns! {
 
             MaybeReady::Blocking(spawn_blocking(move || {
                 std::net::ToSocketAddrs::to_socket_addrs(&s)
-            }))
+            }, false))
         }
     }
 
@@ -183,7 +183,7 @@ cfg_dns! {
 
             MaybeReady::Blocking(spawn_blocking(move || {
                 std::net::ToSocketAddrs::to_socket_addrs(&(&host[..], port))
-            }))
+            }, false))
         }
     }
 

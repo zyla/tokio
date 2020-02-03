@@ -33,7 +33,10 @@ impl<T: 'static> Drop for Cluster<T> {
     fn drop(&mut self) {
         // Drain all the queues
         for queue in &self.local[..] {
-            while let Some(_) = unsafe { queue.pop() } {}
+            while let Some(_task) = unsafe { queue.pop() } {
+                println!("!!!!!!! QUEUE NOT EMPTY");
+                std::process::exit(0);
+            }
         }
 
         while let Some(_) = self.global.pop() {}

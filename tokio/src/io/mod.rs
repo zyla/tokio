@@ -218,8 +218,14 @@ cfg_not_io_util! {
 cfg_io_blocking! {
     /// Types in this module can be mocked out in tests.
     mod sys {
-        // TODO: don't rename
-        pub(crate) use crate::runtime::spawn_blocking as run;
+        pub fn run<F, R>(f: F) -> crate::task::JoinHandle<R>
+        where
+            F: FnOnce() -> R + Send + 'static,
+            R: Send + 'static,
+        {
+            crate::runtime::spawn_blocking(f, false)
+        }
+
         pub(crate) use crate::task::JoinHandle as Blocking;
     }
 }

@@ -103,7 +103,7 @@ impl<T: 'static> Worker<T> {
         self.cluster.global.is_empty()
     }
 
-    fn local_pop(&self) -> Option<Task<T>> {
+    pub(crate) fn local_pop(&self) -> Option<Task<T>> {
         if let Some(task) = self.next.take() {
             return Some(task);
         }

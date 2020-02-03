@@ -103,7 +103,14 @@ where
 mod sys {
     pub(crate) use std::fs::File;
 
+    pub fn run<F, R>(f: F) -> crate::task::JoinHandle<R>
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        crate::runtime::spawn_blocking(f, false)
+    }
+
     // TODO: don't rename
-    pub(crate) use crate::runtime::spawn_blocking as run;
     pub(crate) use crate::task::JoinHandle as Blocking;
 }

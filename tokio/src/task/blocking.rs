@@ -66,6 +66,6 @@ cfg_blocking! {
         F: FnOnce() -> R + Send + 'static,
         R: Send + 'static,
     {
-        crate::runtime::spawn_blocking(f)
+        crate::runtime::spawn_blocking(f, false)
     }
 }

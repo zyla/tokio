@@ -259,7 +259,7 @@ impl Worker {
         };
 
         // Give away the worker
-        runtime::spawn_blocking(move || worker.run());
+        runtime::spawn_blocking(move || worker.run(), true);
     }
 }
 
@@ -557,10 +557,13 @@ impl GenerationGuard<'_> {
                 notify = false;
             }
 
+            assert!(self.owned().work_queue.local_pop().is_none());
+
             // Try draining more tasks
             self.drain_tasks_pending_drop();
 
             if self.owned().owned_tasks.is_empty() {
+                assert!(self.owned().work_queue.local_pop().is_none());
                 break;
             }
 

@@ -58,14 +58,14 @@ type Task = task::Task<NoopSchedule>;
 const KEEP_ALIVE: Duration = Duration::from_secs(10);
 
 /// Run the provided function on an executor dedicated to blocking operations.
-pub(crate) fn spawn_blocking<F, R>(func: F) -> JoinHandle<R>
+pub(crate) fn spawn_blocking<F, R>(func: F, ignore_shutdown: bool) -> JoinHandle<R>
 where
     F: FnOnce() -> R + Send + 'static,
 {
     let rt = Handle::current();
 
     let (task, handle) = task::joinable(BlockingTask::new(func));
-    rt.blocking_spawner.spawn(task, &rt);
+    rt.blocking_spawner.spawn(task, &rt, ignore_shutdown);
     handle
 }
 
@@ -137,11 +137,11 @@ impl fmt::Debug for BlockingPool {
 // ===== impl Spawner =====
 
 impl Spawner {
-    fn spawn(&self, task: Task, rt: &Handle) {
+    fn spawn(&self, task: Task, rt: &Handle, ignore_shutdown: bool) {
         let shutdown_tx = {
             let mut shared = self.inner.shared.lock().unwrap();
 
-            if shared.shutdown {
+            if shared.shutdown && !ignore_shutdown {
                 // Shutdown the task
                 task.shutdown();
 
@@ -217,9 +217,11 @@ impl Inner {
                 run_task(task);
 
                 shared = self.shared.lock().unwrap();
-                if shared.shutdown {
-                    break; // Need to increment idle before we exit
-                }
+
+            }
+
+            if shared.shutdown {
+                break; // Need to increment idle before we exit
             }
 
             // IDLE

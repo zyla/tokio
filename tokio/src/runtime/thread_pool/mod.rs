@@ -110,7 +110,7 @@ impl Workers {
     pub(crate) fn spawn(self, rt: &runtime::Handle) {
         rt.enter(|| {
             for worker in self.workers {
-                runtime::spawn_blocking(move || worker.run());
+                runtime::spawn_blocking(move || worker.run(), true);
             }
         });
     }
