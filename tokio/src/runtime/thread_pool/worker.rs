@@ -212,16 +212,6 @@ impl Worker {
             return;
         }
 
-        // make sure no subsequent code thinks that it is on a worker
-        current::clear();
-
-        // and that we do not apply budgeting if the user ends up invoking
-        // another executor (like doing a synchronous block_on)
-        crate::coop::opt_out();
-
-        // Track that the worker is gone
-        self.gone.set(true);
-
         // If this method is called, we need to move the entire worker onto a
         // separate (blocking) thread before returning. Once we return, the
         // caller is going to execute some blocking code which would otherwise
@@ -263,7 +253,24 @@ impl Worker {
         };
 
         // Give away the worker
-        runtime::spawn_blocking(move || worker.run());
+        //
+        // Returns `Err` if the spawn failed due to the runtime shutting down
+        let res = runtime::try_spawn_blocking(move || worker.run());
+
+        // If the worker hand-off was successful, clear the local state.
+        // Otherwise, the runtime is in the process of shutting down, so we will
+        // just block on the worker.
+        if res.is_ok() {
+            // make sure no subsequent code thinks that it is on a worker
+            current::clear();
+
+            // and that we do not apply budgeting if the user ends up invoking
+            // another executor (like doing a synchronous block_on)
+            crate::coop::opt_out();
+
+            // Track that the worker is gone
+            self.gone.set(true);
+        }
     }
 }
 

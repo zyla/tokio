@@ -65,8 +65,19 @@ where
     let rt = Handle::current();
 
     let (task, handle) = task::joinable(BlockingTask::new(func));
-    rt.blocking_spawner.spawn(task, &rt);
+    let _ = rt.blocking_spawner.spawn(task, &rt);
     handle
+}
+
+#[allow(dead_code)]
+pub(crate) fn try_spawn_blocking<F, R>(func: F) -> Result<(), ()>
+where
+    F: FnOnce() -> R + Send + 'static,
+{
+    let rt = Handle::current();
+
+    let (task, _handle) = task::joinable(BlockingTask::new(func));
+    rt.blocking_spawner.spawn(task, &rt)
 }
 
 // ===== impl BlockingPool =====
@@ -101,11 +112,16 @@ impl BlockingPool {
     pub(crate) fn spawner(&self) -> &Spawner {
         &self.spawner
     }
-}
 
-impl Drop for BlockingPool {
-    fn drop(&mut self) {
+    pub(crate) fn shutdown(&mut self, timeout: Option<Duration>) {
         let mut shared = self.spawner.inner.shared.lock().unwrap();
+
+        // The function can be called multiple times. First, by explicitly
+        // calling `shutdown` then by the drop handler calling `shutdown`. This
+        // prevents shutting down twice.
+        if shared.shutdown {
+            return;
+        }
 
         shared.shutdown = true;
         shared.shutdown_tx = None;
@@ -113,7 +129,13 @@ impl Drop for BlockingPool {
 
         drop(shared);
 
-        self.shutdown_rx.wait();
+        self.shutdown_rx.wait(timeout);
+    }
+}
+
+impl Drop for BlockingPool {
+    fn drop(&mut self) {
+        self.shutdown(None);
     }
 }
 
@@ -126,7 +148,7 @@ impl fmt::Debug for BlockingPool {
 // ===== impl Spawner =====
 
 impl Spawner {
-    fn spawn(&self, task: Task, rt: &Handle) {
+    fn spawn(&self, task: Task, rt: &Handle) -> Result<(), ()> {
         let shutdown_tx = {
             let mut shared = self.inner.shared.lock().unwrap();
 
@@ -135,7 +157,7 @@ impl Spawner {
                 task.shutdown();
 
                 // no need to even push this task; it would never get picked up
-                return;
+                return Err(());
             }
 
             shared.queue.push_back(task);
@@ -167,6 +189,8 @@ impl Spawner {
         if let Some(shutdown_tx) = shutdown_tx {
             self.spawn_thread(shutdown_tx, rt);
         }
+
+        Ok(())
     }
 
     fn spawn_thread(&self, shutdown_tx: shutdown::Sender, rt: &Handle) {
@@ -206,9 +230,6 @@ impl Inner {
                 run_task(task);
 
                 shared = self.shared.lock().unwrap();
-                if shared.shutdown {
-                    break; // Need to increment idle before we exit
-                }
             }
 
             // IDLE
