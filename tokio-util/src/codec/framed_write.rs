@@ -7,7 +7,7 @@ use tokio::{
     stream::Stream,
 };
 
-use bytes::BytesMut;
+use bytes::{Buf, BytesMut};
 use futures_core::ready;
 use futures_sink::Sink;
 use log::trace;
@@ -19,7 +19,9 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 pin_project! {
-    /// A `Sink` of frames encoded to an `AsyncWrite`.
+    /// A [`Sink`] of frames encoded to an `AsyncWrite`.
+    ///
+    /// [`Sink`]: futures_sink::Sink
     pub struct FramedWrite<T, E> {
         #[pin]
         inner: FramedWrite2<Fuse<T, E>>,
@@ -239,8 +241,7 @@ where
                 .into()));
             }
 
-            // TODO: Add a way to `bytes` to do this w/o returning the drained data.
-            let _ = pinned.buffer.split_to(n);
+            pinned.buffer.advance(n);
         }
 
         // Try flushing the underlying IO
