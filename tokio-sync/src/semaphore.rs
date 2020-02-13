@@ -163,7 +163,6 @@ impl Semaphore {
     ///
     /// Panics if `permits` is zero.
     pub fn new(permits: usize) -> Semaphore {
-        println!("I AM USING THE 0.2 SEMAPHORE");
         let stub = Box::new(Waiter::new());
         let ptr = NonNull::from(&*stub);
 
