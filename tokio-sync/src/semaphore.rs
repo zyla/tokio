@@ -163,6 +163,7 @@ impl Semaphore {
     ///
     /// Panics if `permits` is zero.
     pub fn new(permits: usize) -> Semaphore {
+        println!("I AM USING THE 0.2 SEMAPHORE");
         let stub = Box::new(Waiter::new());
         let ptr = NonNull::from(&*stub);
 
@@ -329,7 +330,7 @@ impl Semaphore {
 
     /// Closes the semaphore. This prevents the semaphore from issuing new
     /// permits and notifies all pending waiters.
-    pub(crate) fn close(&self) {
+    pub fn close(&self) {
         // Acquire the `rx_lock`, setting the "closed" flag on the lock.
         let prev = self.rx_lock.fetch_or(1, AcqRel);
 
@@ -343,7 +344,7 @@ impl Semaphore {
     }
 
     /// Adds `n` new permits to the semaphore.
-    pub(crate) fn add_permits(&self, n: usize) {
+    pub fn add_permits(&self, n: usize) {
         if n == 0 {
             return;
         }
