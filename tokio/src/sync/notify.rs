@@ -122,21 +122,25 @@ struct RecvFuture<'a> {
     waiter: linked_list::Entry<Waiter>,
 }
 
+#[repr(u8)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+enum State {
+    /// Initial "idle" state
+    Empty = 0,
+    /// One or more threads are currently waiting to be notified.
+    Waiting = 1,
+    /// Pending notification
+    Notified = 2,
+}
+
+use State::*;
+
 #[derive(Debug)]
 enum RecvState {
     Init,
     Waiting,
     Done,
 }
-
-/// Initial "idle" state
-const EMPTY: u8 = 0;
-
-/// One or more threads are currently waiting to be notified.
-const WAITING: u8 = 1;
-
-/// Pending notification
-const NOTIFIED: u8 = 2;
 
 impl Notify {
     /// Create a new `Notify`, initialized without a permit.
@@ -150,7 +154,7 @@ impl Notify {
     /// ```
     pub fn new() -> Notify {
         Notify {
-            state: AtomicU8::new(0),
+            state: AtomicU8::new(Empty.into()),
             waiters: Mutex::new(LinkedList::new()),
         }
     }
@@ -225,20 +229,20 @@ impl Notify {
     /// ```
     pub fn notify_one(&self) {
         // Load the current state
-        let mut curr = self.state.load(SeqCst);
+        let mut curr = State::from_u8(self.state.load(SeqCst));
 
-        // If the state is `EMPTY`, transition to `NOTIFIED` and return.
-        while let EMPTY | NOTIFIED = curr {
-            // The compare-exchange from `NOTIFIED` -> `NOTIFIED` is intended. A
+        // If the state is `Empty`, transition to `Notified` and return.
+        while let Empty | Notified = curr {
+            // The compare-exchange from `Notified` -> `Notified` is intended. A
             // happens-before synchronization must happen between this atomic
             // operation and a task calling `recv()`.
-            let res = self.state.compare_exchange(curr, NOTIFIED, SeqCst, SeqCst);
+            let res = self.state.compare_exchange(curr.into(), Notified.into(), SeqCst, SeqCst);
 
             match res {
                 // No waiters, no further work to do
                 Ok(_) => return,
                 Err(actual) => {
-                    curr = actual;
+                    curr = State::from_u8(actual);
                 }
             }
         }
@@ -247,8 +251,8 @@ impl Notify {
         let mut waiters = self.waiters.lock().unwrap();
 
         // The state must be reloaded while the lock is held. The state may only
-        // transition out of WAITING while the lock is held.
-        curr = self.state.load(SeqCst);
+        // transition out of Waiting while the lock is held.
+        curr = State::from_u8(self.state.load(SeqCst));
 
         if let Some(waker) = notify_locked(&mut waiters, &self.state, curr) {
             drop(waiters);
@@ -266,26 +270,27 @@ impl Default for Notify {
 fn notify_locked(
     waiters: &mut LinkedList<Waiter>,
     state: &AtomicU8,
-    curr: u8,
+    curr: State,
 ) -> Option<Waker> {
     loop {
         match curr {
-            EMPTY | NOTIFIED => {
-                let res = state.compare_exchange(curr, NOTIFIED, SeqCst, SeqCst);
+            Empty | Notified => {
+                let res = state.compare_exchange(curr.into(), Notified.into(), SeqCst, SeqCst);
 
                 match res {
                     Ok(_) => return None,
                     Err(actual) => {
-                        assert!(actual == EMPTY || actual == NOTIFIED);
-                        state.store(NOTIFIED, SeqCst);
+                        let actual = State::from_u8(actual);
+                        assert!(actual == Empty || actual == Notified);
+                        state.store(Notified.into(), SeqCst);
                         return None;
                     }
                 }
             }
-            WAITING => {
+            Waiting => {
                 // At this point, it is guaranteed that the state will not
                 // concurrently change as holding the lock is required to
-                // transition **out** of `WAITING`.
+                // transition **out** of `Waiting`.
                 //
                 // Get a pending waiter
                 let mut waiter = waiters.pop_back().unwrap();
@@ -297,15 +302,14 @@ fn notify_locked(
 
                 if waiters.is_empty() {
                     // As this the **final** waiter in the list, the state
-                    // must be transitioned to `EMPTY`. As transitioning
-                    // **from** `WAITING` requires the lock to be held, a
+                    // must be transitioned to `Empty`. As transitioning
+                    // **from** `Waiting` requires the lock to be held, a
                     // `store` is sufficient.
-                    state.store(EMPTY, SeqCst);
+                    state.store(Empty.into(), SeqCst);
                 }
 
                 return waker;
             }
-            _ => unreachable!(),
         }
     }
 }
@@ -340,17 +344,17 @@ impl Future for RecvFuture<'_> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
-        use RecvState::*;
+        use RecvState::Done;
 
         let (notify, state, mut waiter) = self.project();
 
         loop {
             match *state {
-                Init => {
+                RecvState::Init => {
                     // Optimistically try acquiring a pending notification
                     let res = notify
                         .state
-                        .compare_exchange(NOTIFIED, EMPTY, SeqCst, SeqCst);
+                        .compare_exchange(Notified.into(), Empty.into(), SeqCst, SeqCst);
 
                     if res.is_ok() {
                         // Acquired the notification
@@ -363,30 +367,31 @@ impl Future for RecvFuture<'_> {
                     let mut waiters = notify.waiters.lock().unwrap();
 
                     // Reload the state with the lock held
-                    let mut curr = notify.state.load(SeqCst);
+                    let mut curr = State::from_u8(notify.state.load(SeqCst));
 
-                    // Transition the state to WAITING.
+                    // Transition the state to Waiting.
                     loop {
                         match curr {
-                            EMPTY => {
-                                // Transition to WAITING
+                            Empty => {
+                                // Transition to Waiting
                                 let res = notify
                                     .state
-                                    .compare_exchange(EMPTY, WAITING, SeqCst, SeqCst);
+                                    .compare_exchange(Empty.into(), Waiting.into(), SeqCst, SeqCst);
 
                                 if let Err(actual) = res {
-                                    assert_eq!(actual, NOTIFIED);
+                                    let actual = State::from_u8(actual);
+                                    assert_eq!(actual, Notified);
                                     curr = actual;
                                 } else {
                                     break;
                                 }
                             }
-                            WAITING => break,
-                            NOTIFIED => {
+                            Waiting => break,
+                            Notified => {
                                 // Try consuming the notification
                                 let res = notify
                                     .state
-                                    .compare_exchange(NOTIFIED, EMPTY, SeqCst, SeqCst);
+                                    .compare_exchange(Notified.into(), Waiting.into(), SeqCst, SeqCst);
 
                                 match res {
                                     Ok(_) => {
@@ -395,12 +400,12 @@ impl Future for RecvFuture<'_> {
                                         return Poll::Ready(());
                                     }
                                     Err(actual) => {
-                                        assert_eq!(actual, EMPTY);
+                                        let actual = State::from_u8(actual);
+                                        assert_eq!(actual, Empty);
                                         curr = actual;
                                     }
                                 }
                             }
-                            _ => unreachable!(),
                         }
                     }
 
@@ -412,15 +417,15 @@ impl Future for RecvFuture<'_> {
                         waiters.push_front(waiter.as_mut());
                     }
 
-                    *state = Waiting;
+                    *state = RecvState::Waiting;
                 }
-                Waiting => {
+                RecvState::Waiting => {
                     // Currently in the "Waiting" state, implying the caller has
                     // a waiter stored in the waiter list (guarded by
                     // `notify.waiters`). In order to access the waker fields,
                     // we must hold the lock.
 
-                    let mut waiters = notify.waiters.lock().unwrap();
+                    let waiters = notify.waiters.lock().unwrap();
 
                     // Safety: called while locked
                     let w = unsafe { &mut *waiter.as_mut().get() };
@@ -458,16 +463,14 @@ impl Future for RecvFuture<'_> {
 
 impl Drop for RecvFuture<'_> {
     fn drop(&mut self) {
-        use RecvState::*;
-
         // Safety: The type only transitions to a "Waiting" state when pinned.
         let (notify, state, mut waiter) = unsafe { Pin::new_unchecked(self).project() };
 
         // This is where we ensure safety. The `RecvFuture` is being dropped,
         // which means we must ensure that the waiter entry is no longer stored
         // in the linked list.
-        if let Waiting = *state {
-            let mut notify_state = WAITING;
+        if let RecvState::Waiting = *state {
+            let mut notify_state = Waiting;
             let mut waiters = notify.waiters.lock().unwrap();
 
             // `Notify.state` may be in any of the three states (Empty, Waiting,
@@ -491,14 +494,14 @@ impl Drop for RecvFuture<'_> {
             unsafe { waiters.remove(waiter.as_mut()) };
 
             if waiters.is_empty() {
-                notify_state = EMPTY;
-                // If the state *should* be `NOTIFIED`, the call to
+                notify_state = Empty;
+                // If the state *should* be `Notified`, the call to
                 // `notify_locked` below will end up doing the
-                // `store(NOTIFIED)`. If a concurrent receiver races and
-                // observes the incorrect `EMPTY` state, it will then obtain the
+                // `store(Notified)`. If a concurrent receiver races and
+                // observes the incorrect `Empty` state, it will then obtain the
                 // lock and block until `notify.state` is in the correct final
                 // state.
-                notify.state.store(EMPTY, SeqCst);
+                notify.state.store(Empty.into(), SeqCst);
             }
 
             // See if the node was notified but not received. In this case, the
@@ -515,6 +518,23 @@ impl Drop for RecvFuture<'_> {
                 }
             }
         }
+    }
+}
+
+impl State {
+    fn from_u8(val: u8) -> State {
+        let state = match val {
+            0 => Empty,
+            1 => Waiting,
+            2 => Notified,
+            _ => unreachable!(),
+        };
+        debug_assert_eq!(val, state.into());
+        state
+    }
+
+    fn into(self) -> u8 {
+        self as u8
     }
 }
 
