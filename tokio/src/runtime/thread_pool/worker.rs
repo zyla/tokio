@@ -11,6 +11,7 @@ use crate::runtime::park::{Parker, Unparker};
 use crate::runtime::task;
 use crate::runtime::thread_pool::{queue, AtomicCell, Idle};
 use crate::util::FastRand;
+use crate::util::linked_list::LinkedList;
 
 use std::cell::RefCell;
 use std::time::Duration;
@@ -43,7 +44,7 @@ struct Core {
     is_shutdown: bool,
 
     /// Tasks owned by the core
-    tasks: task::OwnedList<Arc<Worker>>,
+    tasks: LinkedList<Task>,
 
     /// Parker
     ///
@@ -128,7 +129,7 @@ pub(super) fn create(size: usize, park: Parker) -> (Arc<Shared>, Launch) {
             run_queue,
             is_searching: false,
             is_shutdown: false,
-            tasks: task::OwnedList::new(),
+            tasks: LinkedList::new(),
             park: Some(park),
             rand: FastRand::new(seed()),
         }));
@@ -457,7 +458,8 @@ impl Core {
     /// state.
     fn maintenance(&mut self, worker: &Worker) {
         for task in worker.remote().pending_drop.drain() {
-            self.tasks.remove(&task);
+            unimplemented!();
+            // self.tasks.remove(&task);
         }
 
         if !self.is_shutdown {
@@ -473,12 +475,15 @@ impl Core {
         // Take the core
         let mut park = self.park.take().expect("park missing");
 
+        /*
         // Shutdown all remaining tasks, tracking how many there are. For each
         // task shut down here, an entry will be pushed into `pending_drop`.
         while let Some(task) = self.tasks.pop() {
             rem += 1;
             task.shutdown();
         }
+        */
+        unimplemented!();
 
         loop {
             for _ in worker.remote().pending_drop.drain() {
@@ -515,7 +520,7 @@ impl Worker {
 }
 
 impl task::Schedule for Arc<Worker> {
-    fn bind(task: &Task) -> Arc<Worker> {
+    fn bind(task: Task) -> Arc<Worker> {
         CURRENT.with(|maybe_cx| {
             let cx = maybe_cx.expect("scheduler context missing");
 
@@ -525,14 +530,14 @@ impl task::Schedule for Arc<Worker> {
                 .as_mut()
                 .expect("scheduler core missing")
                 .tasks
-                .insert(task);
+                .push_front(task);
 
             // Return a clone of the worker
             cx.worker.clone()
         })
     }
 
-    fn release(&self, task: Task) -> Option<Task> {
+    fn release(&self, task: &Task) -> Option<Task> {
         CURRENT.with(|maybe_cx| {
             let cx = maybe_cx.expect("scheduler context missing");
 
@@ -540,14 +545,20 @@ impl task::Schedule for Arc<Worker> {
                 let mut maybe_core = cx.core.borrow_mut();
 
                 if let Some(core) = &mut *maybe_core {
+                    /*
                     // Directly remove the task
                     core.tasks.remove(&task);
                     return Some(task);
+                    */
+                    unimplemented!();
                 }
             }
 
+            /*
             // Track the task to be released by the worker that owns it
             self.remote().pending_drop.push(task);
+            */
+            unimplemented!();
 
             if cx.core.borrow().is_some() {
                 return None;

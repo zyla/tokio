@@ -133,13 +133,13 @@ impl<T: Link> LinkedList<T> {
     ///
     /// The caller **must** ensure that `node` is currently contained by
     /// `self` or not contained by any other list.
-    pub(crate) unsafe fn remove(&mut self, node: NonNull<T::Target>) -> bool {
+    pub(crate) unsafe fn remove(&mut self, node: NonNull<T::Target>) -> Option<T::Handle> {
         if let Some(prev) = T::pointers(node).as_ref().prev {
             debug_assert_eq!(T::pointers(prev).as_ref().next, Some(node));
             T::pointers(prev).as_mut().next = T::pointers(node).as_ref().next;
         } else {
             if self.head != Some(node) {
-                return false;
+                return None;
             }
 
             self.head = T::pointers(node).as_ref().next;
@@ -151,7 +151,7 @@ impl<T: Link> LinkedList<T> {
         } else {
             // This might be the last item in the list
             if self.tail != Some(node) {
-                return false;
+                return None;
             }
 
             self.tail = T::pointers(node).as_ref().prev;
@@ -160,7 +160,7 @@ impl<T: Link> LinkedList<T> {
         T::pointers(node).as_mut().next = None;
         T::pointers(node).as_mut().prev = None;
 
-        true
+        Some(T::from_raw(node))
     }
 }
 
