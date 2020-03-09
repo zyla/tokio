@@ -47,6 +47,19 @@ cfg_rt_core! {
     }
 }
 
+cfg_syscall! {
+    use std::sync::Arc;
+    use crate::syscall::Syscalls;
+
+    #[allow(dead_code)] // Unused for now, gated by the unstable flag
+    pub(crate) fn syscalls() -> Option<Arc<Box<dyn Syscalls>>> {
+        CONTEXT.with(|ctx| match *ctx.borrow() {
+            Some(ref ctx) => ctx.syscalls.clone(),
+            None => None
+        })
+    }
+}
+
 /// Set this [`ThreadContext`] as the current active [`ThreadContext`].
 ///
 /// [`ThreadContext`]: struct.ThreadContext.html

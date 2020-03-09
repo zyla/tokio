@@ -320,3 +320,22 @@ macro_rules! cfg_uds {
         )*
     }
 }
+
+macro_rules! cfg_syscall {
+    ($($item:item)*) => {
+        $(
+            #[cfg(feature = "syscall")]
+            #[cfg_attr(docsrs, doc(cfg(feature = "syscall")))]
+            $item
+        )*
+    }
+}
+
+macro_rules! cfg_not_syscall {
+    ($($item:item)*) => {
+        $(
+            #[cfg(not(feature = "syscall"))]
+            $item
+        )*
+    }
+}

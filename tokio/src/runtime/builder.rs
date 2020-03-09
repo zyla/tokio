@@ -66,6 +66,9 @@ pub struct Builder {
 
     /// To run before each worker thread stops
     pub(super) before_stop: Option<Callback>,
+
+    #[cfg(feature = "syscall")]
+    pub(super) syscalls: Option<Box<dyn crate::syscall::Syscalls>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -107,6 +110,9 @@ impl Builder {
             // No worker thread callbacks
             after_start: None,
             before_stop: None,
+
+            #[cfg(feature = "syscall")]
+            syscalls: None,
         }
     }
 
@@ -333,6 +339,9 @@ impl Builder {
         let blocking_pool = blocking::create_blocking_pool(self, self.max_threads);
         let blocking_spawner = blocking_pool.spawner().clone();
 
+        #[cfg(feature = "syscall")]
+        let syscalls = self.syscalls.take().map(Arc::new);
+
         Ok(Runtime {
             kind: Kind::Shell(Shell::new(driver)),
             handle: Handle {
@@ -341,6 +350,8 @@ impl Builder {
                 time_handle,
                 clock,
                 blocking_spawner,
+                #[cfg(feature = "syscall")]
+                syscalls,
             },
             blocking_pool,
         })
@@ -431,6 +442,9 @@ cfg_rt_core! {
             let blocking_pool = blocking::create_blocking_pool(self, self.max_threads);
             let blocking_spawner = blocking_pool.spawner().clone();
 
+            #[cfg(feature = "syscall")]
+            let syscalls = self.syscalls.take().map(Arc::new);
+
             Ok(Runtime {
                 kind: Kind::Basic(scheduler),
                 handle: Handle {
@@ -439,6 +453,8 @@ cfg_rt_core! {
                     time_handle,
                     clock,
                     blocking_spawner,
+                    #[cfg(feature = "syscall")]
+                    syscalls,
                 },
                 blocking_pool,
             })
@@ -476,6 +492,8 @@ cfg_rt_threaded! {
             // Create the blocking pool
             let blocking_pool = blocking::create_blocking_pool(self, self.max_threads);
             let blocking_spawner = blocking_pool.spawner().clone();
+            #[cfg(feature = "syscall")]
+            let syscalls = self.syscalls.take().map(Arc::new);
 
             // Create the runtime handle
             let handle = Handle {
@@ -484,6 +502,8 @@ cfg_rt_threaded! {
                 time_handle,
                 clock,
                 blocking_spawner,
+                #[cfg(feature = "syscall")]
+                syscalls,
             };
 
             // Spawn the thread pool workers

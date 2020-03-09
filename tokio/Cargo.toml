@@ -84,6 +84,7 @@ signal = [
 ]
 stream = ["futures-core"]
 sync = ["fnv"]
+syscall = []
 test-util = []
 tcp = ["io-driver", "iovec"]
 time = ["slab"]

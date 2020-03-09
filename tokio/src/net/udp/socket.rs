@@ -1,18 +1,290 @@
 use crate::future::poll_fn;
-use crate::io::PollEvented;
 use crate::net::udp::split::{split, RecvHalf, SendHalf};
 use crate::net::ToSocketAddrs;
 
-use std::convert::TryFrom;
 use std::fmt;
 use std::io;
-use std::net::{self, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::task::{Context, Poll};
 
 cfg_udp! {
-    /// A UDP socket
-    pub struct UdpSocket {
-        io: PollEvented<mio::net::UdpSocket>,
+    cfg_syscall! {
+        use crate::{syscall::UdpResource, runtime::context};
+        use crate::syscall::Syscalls;
+        use std::sync::Arc;
+
+        fn syscalls() -> Arc<Box<dyn Syscalls>> {
+            context::syscalls().expect("syscalls not registered")
+        }
+
+        /// A UDP socket
+        pub struct UdpSocket {
+            io: UdpResource,
+        }
+
+        impl UdpSocket {
+            fn bind_addr(addr: SocketAddr) -> io::Result<UdpSocket> {
+                let io = syscalls().udp_bind(addr)?;
+                Ok(UdpSocket { io })
+            }
+
+            fn connect_addr0(&self, _addr: SocketAddr) -> io::Result<()> {
+                unimplemented!()
+            }
+
+            fn local_addr0(&self) -> io::Result<SocketAddr> {
+                unimplemented!()
+            }
+
+            fn poll_send0(&self, _cx: &mut Context<'_>, _buf: &[u8]) -> Poll<io::Result<usize>> {
+                unimplemented!()
+            }
+
+            fn poll_recv0(&self, _: &mut Context<'_>, _: &mut [u8]) -> Poll<io::Result<usize>> {
+                unimplemented!()
+            }
+
+            fn poll_send_to0(
+                &self,
+                cx: &mut Context<'_>,
+                buf: &[u8],
+                target: &SocketAddr,
+            ) -> Poll<io::Result<usize>> {
+                syscalls().poll_udp_send_to(self.io, cx, buf, *target)
+            }
+
+            fn poll_recv_from0(
+                &self,
+                _cx: &mut Context<'_>,
+                _buf: &mut [u8],
+            ) -> Poll<Result<(usize, SocketAddr), io::Error>> {
+                unimplemented!()
+            }
+
+            fn broadcast0(&self) -> io::Result<bool> {
+                unimplemented!()
+            }
+
+            fn set_broadcast0(&self, _on: bool) -> io::Result<()> {
+                unimplemented!()
+            }
+
+            fn multicast_loop_v4_0(&self) -> io::Result<bool> {
+                unimplemented!()
+            }
+
+            fn set_multicast_loop_v4_0(&self, _on: bool) -> io::Result<()> {
+                unimplemented!()
+            }
+
+            fn multicast_ttl_v4_0(&self) -> io::Result<u32> {
+                unimplemented!()
+            }
+
+            fn set_multicast_ttl_v4_0(&self, _ttl: u32) -> io::Result<()> {
+                unimplemented!()
+            }
+
+            fn multicast_loop_v6_0(&self) -> io::Result<bool> {
+                unimplemented!()
+            }
+
+            fn set_multicast_loop_v6_0(&self, _on: bool) -> io::Result<()> {
+                unimplemented!()
+            }
+
+            fn ttl_0(&self) -> io::Result<u32> {
+                unimplemented!()
+            }
+
+            fn set_ttl_0(&self, _ttl: u32) -> io::Result<()> {
+                unimplemented!()
+            }
+
+            fn join_multicast_v4_0(&self, _multiaddr: Ipv4Addr, _interface: Ipv4Addr) -> io::Result<()> {
+                unimplemented!()
+            }
+
+            fn join_multicast_v6_0(&self, _multiaddr: &Ipv6Addr, _interface: u32) -> io::Result<()> {
+                unimplemented!()
+            }
+
+            fn leave_multicast_v4_0(&self, _multiaddr: Ipv4Addr, _interface: Ipv4Addr) -> io::Result<()> {
+                unimplemented!()
+            }
+
+            fn leave_multicast_v6_0(&self, _multiaddr: &Ipv6Addr, _interface: u32) -> io::Result<()> {
+                unimplemented!()
+            }
+        }
+    }
+
+    cfg_not_syscall! {
+        use std::net;
+        use crate::io::PollEvented;
+
+        /// A UDP socket
+        pub struct UdpSocket {
+            io: PollEvented<mio::net::UdpSocket>,
+        }
+        impl UdpSocket {
+
+            fn new(socket: mio::net::UdpSocket) -> io::Result<UdpSocket> {
+                let io = PollEvented::new(socket)?;
+                Ok(UdpSocket { io })
+            }
+
+            fn bind_addr(addr: SocketAddr) -> io::Result<UdpSocket> {
+                let sys = mio::net::UdpSocket::bind(&addr)?;
+                UdpSocket::new(sys)
+            }
+
+
+            fn connect_addr0(&self, addr: SocketAddr) -> io::Result<()> {
+                self.io.get_ref().connect(addr)?;
+                Ok(())
+            }
+
+            fn local_addr0(&self) -> io::Result<SocketAddr> {
+                self.io.get_ref().local_addr()
+            }
+
+            /// Creates a new `UdpSocket` from the previously bound socket provided.
+            ///
+            /// The socket given will be registered with the event loop that `handle`
+            /// is associated with. This function requires that `socket` has previously
+            /// been bound to an address to work correctly.
+            ///
+            /// This can be used in conjunction with net2's `UdpBuilder` interface to
+            /// configure a socket before it's handed off, such as setting options like
+            /// `reuse_address` or binding to multiple addresses.
+            ///
+            /// # Panics
+            ///
+            /// This function panics if thread-local runtime is not set.
+            ///
+            /// The runtime is usually set implicitly when this function is called
+            /// from a future driven by a tokio runtime, otherwise runtime can be set
+            /// explicitly with [`Handle::enter`](crate::runtime::Handle::enter) function.
+            pub fn from_std(socket: net::UdpSocket) -> io::Result<UdpSocket> {
+                let io = mio::net::UdpSocket::from_socket(socket)?;
+                let io = PollEvented::new(io)?;
+                Ok(UdpSocket { io })
+            }
+
+            fn poll_send0(&self, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+                ready!(self.io.poll_write_ready(cx))?;
+
+                match self.io.get_ref().send(buf) {
+                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        self.io.clear_write_ready(cx)?;
+                        Poll::Pending
+                    }
+                    x => Poll::Ready(x),
+                }
+            }
+
+            fn poll_recv0(&self, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<io::Result<usize>> {
+                ready!(self.io.poll_read_ready(cx, mio::Ready::readable()))?;
+
+                match self.io.get_ref().recv(buf) {
+                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        self.io.clear_read_ready(cx, mio::Ready::readable())?;
+                        Poll::Pending
+                    }
+                    x => Poll::Ready(x),
+                }
+            }
+
+            fn poll_send_to0(
+                &self,
+                cx: &mut Context<'_>,
+                buf: &[u8],
+                target: &SocketAddr,
+            ) -> Poll<io::Result<usize>> {
+                ready!(self.io.poll_write_ready(cx))?;
+
+                match self.io.get_ref().send_to(buf, target) {
+                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        self.io.clear_write_ready(cx)?;
+                        Poll::Pending
+                    }
+                    x => Poll::Ready(x),
+                }
+            }
+
+            fn poll_recv_from0(
+                &self,
+                cx: &mut Context<'_>,
+                buf: &mut [u8],
+            ) -> Poll<Result<(usize, SocketAddr), io::Error>> {
+                ready!(self.io.poll_read_ready(cx, mio::Ready::readable()))?;
+
+                match self.io.get_ref().recv_from(buf) {
+                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        self.io.clear_read_ready(cx, mio::Ready::readable())?;
+                        Poll::Pending
+                    }
+                    x => Poll::Ready(x),
+                }
+            }
+
+            fn broadcast0(&self) -> io::Result<bool> {
+                self.io.get_ref().broadcast()
+            }
+
+            fn set_broadcast0(&self, on: bool) -> io::Result<()> {
+                self.io.get_ref().set_broadcast(on)
+            }
+
+            fn multicast_loop_v4_0(&self) -> io::Result<bool> {
+                self.io.get_ref().multicast_loop_v4()
+            }
+
+            fn set_multicast_loop_v4_0(&self, on: bool) -> io::Result<()> {
+                self.io.get_ref().set_multicast_loop_v4(on)
+            }
+
+            fn multicast_ttl_v4_0(&self) -> io::Result<u32> {
+                self.io.get_ref().multicast_ttl_v4()
+            }
+
+            fn set_multicast_ttl_v4_0(&self, ttl: u32) -> io::Result<()> {
+                self.io.get_ref().set_multicast_ttl_v4(ttl)
+            }
+
+            fn multicast_loop_v6_0(&self) -> io::Result<bool> {
+                self.io.get_ref().multicast_loop_v6()
+            }
+
+            fn set_multicast_loop_v6_0(&self, on: bool) -> io::Result<()> {
+                self.io.get_ref().set_multicast_loop_v6(on)
+            }
+
+            fn ttl_0(&self) -> io::Result<u32> {
+                self.io.get_ref().ttl()
+            }
+
+            fn set_ttl_0(&self, ttl: u32) -> io::Result<()> {
+                self.io.get_ref().set_ttl(ttl)
+            }
+
+            fn join_multicast_v4_0(&self, multiaddr: Ipv4Addr, interface: Ipv4Addr) -> io::Result<()> {
+                self.io.get_ref().join_multicast_v4(&multiaddr, &interface)
+            }
+
+            fn join_multicast_v6_0(&self, multiaddr: &Ipv6Addr, interface: u32) -> io::Result<()> {
+                self.io.get_ref().join_multicast_v6(multiaddr, interface)
+            }
+
+            fn leave_multicast_v4_0(&self, multiaddr: Ipv4Addr, interface: Ipv4Addr) -> io::Result<()> {
+                self.io.get_ref().leave_multicast_v4(&multiaddr, &interface)
+            }
+
+            fn leave_multicast_v6_0(&self, multiaddr: &Ipv6Addr, interface: u32) -> io::Result<()> {
+                self.io.get_ref().leave_multicast_v6(multiaddr, interface)
+            }
+        }
     }
 }
 
@@ -38,39 +310,6 @@ impl UdpSocket {
         }))
     }
 
-    fn bind_addr(addr: SocketAddr) -> io::Result<UdpSocket> {
-        let sys = mio::net::UdpSocket::bind(&addr)?;
-        UdpSocket::new(sys)
-    }
-
-    fn new(socket: mio::net::UdpSocket) -> io::Result<UdpSocket> {
-        let io = PollEvented::new(socket)?;
-        Ok(UdpSocket { io })
-    }
-
-    /// Creates a new `UdpSocket` from the previously bound socket provided.
-    ///
-    /// The socket given will be registered with the event loop that `handle`
-    /// is associated with. This function requires that `socket` has previously
-    /// been bound to an address to work correctly.
-    ///
-    /// This can be used in conjunction with net2's `UdpBuilder` interface to
-    /// configure a socket before it's handed off, such as setting options like
-    /// `reuse_address` or binding to multiple addresses.
-    ///
-    /// # Panics
-    ///
-    /// This function panics if thread-local runtime is not set.
-    ///
-    /// The runtime is usually set implicitly when this function is called
-    /// from a future driven by a tokio runtime, otherwise runtime can be set
-    /// explicitly with [`Handle::enter`](crate::runtime::Handle::enter) function.
-    pub fn from_std(socket: net::UdpSocket) -> io::Result<UdpSocket> {
-        let io = mio::net::UdpSocket::from_socket(socket)?;
-        let io = PollEvented::new(io)?;
-        Ok(UdpSocket { io })
-    }
-
     /// Splits the `UdpSocket` into a receive half and a send half. The two parts
     /// can be used to receive and send datagrams concurrently, even from two
     /// different tasks.
@@ -83,7 +322,7 @@ impl UdpSocket {
 
     /// Returns the local address that this socket is bound to.
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
-        self.io.get_ref().local_addr()
+        self.local_addr0()
     }
 
     /// Connects the UDP socket setting the default destination for send() and
@@ -94,7 +333,7 @@ impl UdpSocket {
         let mut last_err = None;
 
         for addr in addrs {
-            match self.io.get_ref().connect(addr) {
+            match self.connect_addr0(addr) {
                 Ok(_) => return Ok(()),
                 Err(e) => last_err = Some(e),
             }
@@ -131,15 +370,7 @@ impl UdpSocket {
     // notifications and tasks hanging.
     #[doc(hidden)]
     pub fn poll_send(&self, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
-        ready!(self.io.poll_write_ready(cx))?;
-
-        match self.io.get_ref().send(buf) {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                self.io.clear_write_ready(cx)?;
-                Poll::Pending
-            }
-            x => Poll::Ready(x),
-        }
+        self.poll_send0(cx, buf)
     }
 
     /// Returns a future that receives a single datagram message on the socket from
@@ -160,15 +391,7 @@ impl UdpSocket {
 
     #[doc(hidden)]
     pub fn poll_recv(&self, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<io::Result<usize>> {
-        ready!(self.io.poll_read_ready(cx, mio::Ready::readable()))?;
-
-        match self.io.get_ref().recv(buf) {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                self.io.clear_read_ready(cx, mio::Ready::readable())?;
-                Poll::Pending
-            }
-            x => Poll::Ready(x),
-        }
+        self.poll_recv0(cx, buf)
     }
 
     /// Returns a future that sends data on the socket to the given address.
@@ -196,15 +419,7 @@ impl UdpSocket {
         buf: &[u8],
         target: &SocketAddr,
     ) -> Poll<io::Result<usize>> {
-        ready!(self.io.poll_write_ready(cx))?;
-
-        match self.io.get_ref().send_to(buf, target) {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                self.io.clear_write_ready(cx)?;
-                Poll::Pending
-            }
-            x => Poll::Ready(x),
-        }
+        self.poll_send_to0(cx, buf, target)
     }
 
     /// Returns a future that receives a single datagram on the socket. On success,
@@ -223,15 +438,7 @@ impl UdpSocket {
         cx: &mut Context<'_>,
         buf: &mut [u8],
     ) -> Poll<Result<(usize, SocketAddr), io::Error>> {
-        ready!(self.io.poll_read_ready(cx, mio::Ready::readable()))?;
-
-        match self.io.get_ref().recv_from(buf) {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                self.io.clear_read_ready(cx, mio::Ready::readable())?;
-                Poll::Pending
-            }
-            x => Poll::Ready(x),
-        }
+        self.poll_recv_from0(cx, buf)
     }
 
     /// Gets the value of the `SO_BROADCAST` option for this socket.
@@ -240,7 +447,7 @@ impl UdpSocket {
     ///
     /// [`set_broadcast`]: #method.set_broadcast
     pub fn broadcast(&self) -> io::Result<bool> {
-        self.io.get_ref().broadcast()
+        self.broadcast0()
     }
 
     /// Sets the value of the `SO_BROADCAST` option for this socket.
@@ -248,7 +455,7 @@ impl UdpSocket {
     /// When enabled, this socket is allowed to send packets to a broadcast
     /// address.
     pub fn set_broadcast(&self, on: bool) -> io::Result<()> {
-        self.io.get_ref().set_broadcast(on)
+        self.set_broadcast0(on)
     }
 
     /// Gets the value of the `IP_MULTICAST_LOOP` option for this socket.
@@ -257,7 +464,7 @@ impl UdpSocket {
     ///
     /// [`set_multicast_loop_v4`]: #method.set_multicast_loop_v4
     pub fn multicast_loop_v4(&self) -> io::Result<bool> {
-        self.io.get_ref().multicast_loop_v4()
+        self.multicast_loop_v4_0()
     }
 
     /// Sets the value of the `IP_MULTICAST_LOOP` option for this socket.
@@ -268,7 +475,7 @@ impl UdpSocket {
     ///
     /// This may not have any affect on IPv6 sockets.
     pub fn set_multicast_loop_v4(&self, on: bool) -> io::Result<()> {
-        self.io.get_ref().set_multicast_loop_v4(on)
+        self.set_multicast_loop_v4_0(on)
     }
 
     /// Gets the value of the `IP_MULTICAST_TTL` option for this socket.
@@ -277,7 +484,7 @@ impl UdpSocket {
     ///
     /// [`set_multicast_ttl_v4`]: #method.set_multicast_ttl_v4
     pub fn multicast_ttl_v4(&self) -> io::Result<u32> {
-        self.io.get_ref().multicast_ttl_v4()
+        self.multicast_ttl_v4_0()
     }
 
     /// Sets the value of the `IP_MULTICAST_TTL` option for this socket.
@@ -290,7 +497,7 @@ impl UdpSocket {
     ///
     /// This may not have any affect on IPv6 sockets.
     pub fn set_multicast_ttl_v4(&self, ttl: u32) -> io::Result<()> {
-        self.io.get_ref().set_multicast_ttl_v4(ttl)
+        self.set_multicast_ttl_v4_0(ttl)
     }
 
     /// Gets the value of the `IPV6_MULTICAST_LOOP` option for this socket.
@@ -299,7 +506,7 @@ impl UdpSocket {
     ///
     /// [`set_multicast_loop_v6`]: #method.set_multicast_loop_v6
     pub fn multicast_loop_v6(&self) -> io::Result<bool> {
-        self.io.get_ref().multicast_loop_v6()
+        self.multicast_loop_v6_0()
     }
 
     /// Sets the value of the `IPV6_MULTICAST_LOOP` option for this socket.
@@ -310,7 +517,7 @@ impl UdpSocket {
     ///
     /// This may not have any affect on IPv4 sockets.
     pub fn set_multicast_loop_v6(&self, on: bool) -> io::Result<()> {
-        self.io.get_ref().set_multicast_loop_v6(on)
+        self.set_multicast_loop_v6_0(on)
     }
 
     /// Gets the value of the `IP_TTL` option for this socket.
@@ -319,7 +526,7 @@ impl UdpSocket {
     ///
     /// [`set_ttl`]: #method.set_ttl
     pub fn ttl(&self) -> io::Result<u32> {
-        self.io.get_ref().ttl()
+        self.ttl_0()
     }
 
     /// Sets the value for the `IP_TTL` option on this socket.
@@ -327,7 +534,7 @@ impl UdpSocket {
     /// This value sets the time-to-live field that is used in every packet sent
     /// from this socket.
     pub fn set_ttl(&self, ttl: u32) -> io::Result<()> {
-        self.io.get_ref().set_ttl(ttl)
+        self.set_ttl_0(ttl)
     }
 
     /// Executes an operation of the `IP_ADD_MEMBERSHIP` type.
@@ -338,7 +545,7 @@ impl UdpSocket {
     /// multicast group. If it's equal to `INADDR_ANY` then an appropriate
     /// interface is chosen by the system.
     pub fn join_multicast_v4(&self, multiaddr: Ipv4Addr, interface: Ipv4Addr) -> io::Result<()> {
-        self.io.get_ref().join_multicast_v4(&multiaddr, &interface)
+        self.join_multicast_v4_0(multiaddr, interface)
     }
 
     /// Executes an operation of the `IPV6_ADD_MEMBERSHIP` type.
@@ -347,7 +554,7 @@ impl UdpSocket {
     /// The address must be a valid multicast address, and `interface` is the
     /// index of the interface to join/leave (or 0 to indicate any interface).
     pub fn join_multicast_v6(&self, multiaddr: &Ipv6Addr, interface: u32) -> io::Result<()> {
-        self.io.get_ref().join_multicast_v6(multiaddr, interface)
+        self.join_multicast_v6_0(multiaddr, interface)
     }
 
     /// Executes an operation of the `IP_DROP_MEMBERSHIP` type.
@@ -356,7 +563,7 @@ impl UdpSocket {
     ///
     /// [`join_multicast_v4`]: #method.join_multicast_v4
     pub fn leave_multicast_v4(&self, multiaddr: Ipv4Addr, interface: Ipv4Addr) -> io::Result<()> {
-        self.io.get_ref().leave_multicast_v4(&multiaddr, &interface)
+        self.leave_multicast_v4_0(multiaddr, interface)
     }
 
     /// Executes an operation of the `IPV6_DROP_MEMBERSHIP` type.
@@ -365,50 +572,55 @@ impl UdpSocket {
     ///
     /// [`join_multicast_v6`]: #method.join_multicast_v6
     pub fn leave_multicast_v6(&self, multiaddr: &Ipv6Addr, interface: u32) -> io::Result<()> {
-        self.io.get_ref().leave_multicast_v6(multiaddr, interface)
+        self.leave_multicast_v6_0(multiaddr, interface)
     }
 }
 
-impl TryFrom<UdpSocket> for mio::net::UdpSocket {
-    type Error = io::Error;
+cfg_not_syscall! {
+    use std::convert::TryFrom;
+    impl TryFrom<UdpSocket> for mio::net::UdpSocket {
+        type Error = io::Error;
 
-    /// Consumes value, returning the mio I/O object.
-    ///
-    /// See [`PollEvented::into_inner`] for more details about
-    /// resource deregistration that happens during the call.
-    ///
-    /// [`PollEvented::into_inner`]: crate::io::PollEvented::into_inner
-    fn try_from(value: UdpSocket) -> Result<Self, Self::Error> {
-        value.io.into_inner()
+        /// Consumes value, returning the mio I/O object.
+        ///
+        /// See [`PollEvented::into_inner`] for more details about
+        /// resource deregistration that happens during the call.
+        ///
+        /// [`PollEvented::into_inner`]: crate::io::PollEvented::into_inner
+        fn try_from(value: UdpSocket) -> Result<Self, Self::Error> {
+            value.io.into_inner()
+        }
     }
-}
 
-impl TryFrom<net::UdpSocket> for UdpSocket {
-    type Error = io::Error;
+    impl TryFrom<net::UdpSocket> for UdpSocket {
+        type Error = io::Error;
 
-    /// Consumes stream, returning the tokio I/O object.
-    ///
-    /// This is equivalent to
-    /// [`UdpSocket::from_std(stream)`](UdpSocket::from_std).
-    fn try_from(stream: net::UdpSocket) -> Result<Self, Self::Error> {
-        Self::from_std(stream)
+        /// Consumes stream, returning the tokio I/O object.
+        ///
+        /// This is equivalent to
+        /// [`UdpSocket::from_std(stream)`](UdpSocket::from_std).
+        fn try_from(stream: net::UdpSocket) -> Result<Self, Self::Error> {
+            Self::from_std(stream)
+        }
     }
 }
 
 impl fmt::Debug for UdpSocket {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.io.get_ref().fmt(f)
+        self.io.fmt(f)
     }
 }
 
-#[cfg(all(unix))]
-mod sys {
-    use super::UdpSocket;
-    use std::os::unix::prelude::*;
+cfg_not_syscall! {
+    #[cfg(all(unix))]
+    mod sys {
+        use super::UdpSocket;
+        use std::os::unix::prelude::*;
 
-    impl AsRawFd for UdpSocket {
-        fn as_raw_fd(&self) -> RawFd {
-            self.io.get_ref().as_raw_fd()
+        impl AsRawFd for UdpSocket {
+            fn as_raw_fd(&self) -> RawFd {
+                self.io.get_ref().as_raw_fd()
+            }
         }
     }
 }

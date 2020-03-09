@@ -345,6 +345,10 @@ cfg_time! {
     pub mod time;
 }
 
+cfg_syscall! {
+    pub mod syscall;
+}
+
 mod util;
 
 cfg_macros! {
