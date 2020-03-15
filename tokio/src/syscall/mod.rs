@@ -6,8 +6,9 @@ use std::{
     task::{Context, Poll},
 };
 
-mod udp;
-pub use udp::UdpResource;
+#[derive(Debug, Copy, Clone)]
+/// A resource token
+pub struct UdpResource(usize);
 
 /// Syscalls
 pub trait Syscalls: Send + Sync + Debug {

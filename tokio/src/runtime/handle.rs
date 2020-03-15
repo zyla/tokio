@@ -29,7 +29,7 @@ pub struct Handle {
     pub(super) blocking_spawner: blocking::Spawner,
 
     /// TODO: Document Syscalls
-    #[cfg(feature = "syscall")]
+    #[cfg(all(feature = "syscall", tokio_unstable))]
     pub(super) syscalls: Option<Arc<Box<dyn Syscalls>>>,
 }
 
