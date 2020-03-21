@@ -260,7 +260,7 @@ impl<T> RwLock<T> {
     ///   *n = 2;
     /// }
     /// ```
-    pub async fn get_mut(&mut self) -> &mut T {
+    pub fn get_mut(&mut self) -> &mut T {
         unsafe { &mut *self.c.get() }
     }
 }
