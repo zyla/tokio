@@ -222,7 +222,7 @@ impl<T> RwLock<T> {
     ///
     ///   let mut n = lock.write().await;
     ///   *n = 2;
-    ///}
+    /// }
     /// ```
     pub async fn write(&self) -> RwLockWriteGuard<'_, T> {
         let mut permit = ReleasingPermit {
@@ -240,6 +240,28 @@ impl<T> RwLock<T> {
             });
 
         RwLockWriteGuard { lock: self, permit }
+    }
+
+    /// Returns a mutable reference to the underlying data.
+    ///
+    /// This is safe, because this method takes a mutable reference to the lock, which means it is
+    /// not shared.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tokio::sync::RwLock;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///   let mut lock = RwLock::new(1);
+    ///
+    ///   let mut n = lock.get_mut();
+    ///   *n = 2;
+    /// }
+    /// ```
+    pub async fn get_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.c.get() }
     }
 }
 
