@@ -16,8 +16,8 @@ use std::sync::Arc;
 /// See function level documentation for details on the various configuration
 /// settings.
 ///
-/// [`build`]: #method.build
-/// [`Builder::new`]: #method.new
+/// [`build`]: method@Self::build
+/// [`Builder::new`]: method@Self::new
 ///
 /// # Examples
 ///
@@ -399,12 +399,13 @@ cfg_rt_core! {
         /// Sets runtime to use a simpler scheduler that runs all tasks on the current-thread.
         ///
         /// The executor and all necessary drivers will all be run on the current
-        /// thread during `block_on` calls.
+        /// thread during [`block_on`] calls.
         ///
         /// See also [the module level documentation][1], which has a section on scheduler
         /// types.
         ///
         /// [1]: index.html#runtime-configurations
+        /// [`block_on`]: Runtime::block_on
         pub fn basic_scheduler(&mut self) -> &mut Self {
             self.kind = Kind::Basic;
             self
@@ -425,7 +426,7 @@ cfg_rt_core! {
             // the reactor to generate some new stimuli for the futures to continue
             // in their life.
             let scheduler = BasicScheduler::new(driver);
-            let spawner = Spawner::Basic(scheduler.spawner());
+            let spawner = Spawner::Basic(scheduler.spawner().clone());
 
             // Blocking pool
             let blocking_pool = blocking::create_blocking_pool(self, self.max_threads);
@@ -460,17 +461,19 @@ cfg_rt_threaded! {
         }
 
         fn build_threaded_runtime(&mut self) -> io::Result<Runtime> {
+            use crate::loom::sys::num_cpus;
             use crate::runtime::{Kind, ThreadPool};
             use crate::runtime::park::Parker;
+            use std::cmp;
 
-            let core_threads = self.core_threads.unwrap_or_else(crate::loom::sys::num_cpus);
+            let core_threads = self.core_threads.unwrap_or_else(|| cmp::min(self.max_threads, num_cpus()));
             assert!(core_threads <= self.max_threads, "Core threads number cannot be above max limit");
 
             let clock = time::create_clock();
 
             let (io_driver, io_handle) = io::create_driver(self.enable_io)?;
             let (driver, time_handle) = time::create_driver(self.enable_time, io_driver, clock.clone());
-            let (scheduler, workers) = ThreadPool::new(core_threads, Parker::new(driver));
+            let (scheduler, launch) = ThreadPool::new(core_threads, Parker::new(driver));
             let spawner = Spawner::ThreadPool(scheduler.spawner().clone());
 
             // Create the blocking pool
@@ -487,7 +490,7 @@ cfg_rt_threaded! {
             };
 
             // Spawn the thread pool workers
-            workers.spawn(&handle);
+            handle.enter(|| launch.launch());
 
             Ok(Runtime {
                 kind: Kind::ThreadPool(scheduler),

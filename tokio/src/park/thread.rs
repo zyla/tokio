@@ -129,6 +129,10 @@ impl Inner {
             return;
         }
 
+        if dur == Duration::from_millis(0) {
+            return;
+        }
+
         let m = self.mutex.lock().unwrap();
 
         match self.state.compare_exchange(EMPTY, PARKED, SeqCst, SeqCst) {
@@ -200,7 +204,7 @@ impl Unpark for UnparkThread {
     }
 }
 
-cfg_blocking_impl! {
+cfg_block_on! {
     use std::marker::PhantomData;
     use std::rc::Rc;
 

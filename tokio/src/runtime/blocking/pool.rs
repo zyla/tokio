@@ -5,8 +5,8 @@ use crate::loom::thread;
 use crate::runtime::blocking::schedule::NoopSchedule;
 use crate::runtime::blocking::shutdown;
 use crate::runtime::blocking::task::BlockingTask;
+use crate::runtime::task::{self, JoinHandle};
 use crate::runtime::{Builder, Callback, Handle};
-use crate::task::{self, JoinHandle};
 
 use std::collections::VecDeque;
 use std::fmt;
@@ -53,7 +53,7 @@ struct Shared {
     shutdown_tx: Option<shutdown::Sender>,
 }
 
-type Task = task::Task<NoopSchedule>;
+type Task = task::Notified<NoopSchedule>;
 
 const KEEP_ALIVE: Duration = Duration::from_secs(10);
 
@@ -148,7 +148,7 @@ impl fmt::Debug for BlockingPool {
 // ===== impl Spawner =====
 
 impl Spawner {
-    fn spawn(&self, task: Task, rt: &Handle) -> Result<(), ()> {
+    pub(crate) fn spawn(&self, task: Task, rt: &Handle) -> Result<(), ()> {
         let shutdown_tx = {
             let mut shared = self.inner.shared.lock().unwrap();
 
@@ -227,7 +227,7 @@ impl Inner {
             // BUSY
             while let Some(task) = shared.queue.pop_front() {
                 drop(shared);
-                run_task(task);
+                task.run();
 
                 shared = self.shared.lock().unwrap();
             }
@@ -304,10 +304,4 @@ impl fmt::Debug for Spawner {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("blocking::Spawner").finish()
     }
-}
-
-fn run_task(f: Task) {
-    let scheduler: &'static NoopSchedule = &NoopSchedule;
-    let res = f.run(|| Some(scheduler.into()));
-    assert!(res.is_none());
 }

@@ -10,7 +10,7 @@
 //! section. If no permits are available, then acquiring the semaphore returns
 //! `Pending`. The task is woken once a permit becomes available.
 
-use crate::loom::cell::CausalCell;
+use crate::loom::cell::UnsafeCell;
 use crate::loom::future::AtomicWaker;
 use crate::loom::sync::atomic::{AtomicPtr, AtomicUsize};
 use crate::loom::thread;
@@ -30,7 +30,7 @@ pub(crate) struct Semaphore {
     state: AtomicUsize,
 
     /// waiter queue head pointer.
-    head: CausalCell<NonNull<Waiter>>,
+    head: UnsafeCell<NonNull<Waiter>>,
 
     /// Coordinates access to the queue head.
     rx_lock: AtomicUsize,
@@ -165,7 +165,7 @@ impl Semaphore {
 
         Semaphore {
             state: AtomicUsize::new(state.to_usize()),
-            head: CausalCell::new(ptr),
+            head: UnsafeCell::new(ptr),
             rx_lock: AtomicUsize::new(0),
             stub,
         }
@@ -333,8 +333,9 @@ impl Semaphore {
 
         self.add_permits_locked(0, true);
     }
-
     /// Adds `n` new permits to the semaphore.
+    ///
+    /// The maximum number of permits is `usize::MAX >> 3`, and this function will panic if the limit is exceeded.
     pub(crate) fn add_permits(&self, n: usize) {
         if n == 0 {
             return;
@@ -610,6 +611,7 @@ impl Permit {
     }
 
     /// Returns `true` if the permit has been acquired
+    #[allow(dead_code)] // may be used later
     pub(crate) fn is_acquired(&self) -> bool {
         match self.state {
             PermitState::Acquired(num) if num > 0 => true,
@@ -748,7 +750,7 @@ impl Permit {
     /// Forgets the permit **without** releasing it back to the semaphore.
     ///
     /// After calling `forget`, `poll_acquire` is able to acquire new permit
-    /// from the sempahore.
+    /// from the semaphore.
     ///
     /// Repeatedly calling `forget` without associated calls to `add_permit`
     /// will result in the semaphore losing all permits.
@@ -852,8 +854,8 @@ impl TryAcquireError {
 impl fmt::Display for TryAcquireError {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TryAcquireError::Closed => write!(fmt, "{}", "semaphore closed"),
-            TryAcquireError::NoPermits => write!(fmt, "{}", "no permits available"),
+            TryAcquireError::Closed => write!(fmt, "semaphore closed"),
+            TryAcquireError::NoPermits => write!(fmt, "no permits available"),
         }
     }
 }

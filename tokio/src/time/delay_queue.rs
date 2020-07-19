@@ -2,7 +2,7 @@
 //!
 //! See [`DelayQueue`] for more details.
 //!
-//! [`DelayQueue`]: struct.DelayQueue.html
+//! [`DelayQueue`]: struct@DelayQueue
 
 use crate::time::wheel::{self, Wheel};
 use crate::time::{delay_until, Delay, Duration, Error, Instant};
@@ -50,13 +50,12 @@ use std::task::{self, Poll};
 ///
 /// # Implementation
 ///
-/// The `DelayQueue` is backed by the same hashed timing wheel implementation as
-/// [`Timer`] as such, it offers the same performance benefits. See [`Timer`]
-/// for further implementation notes.
+/// The [`DelayQueue`] is backed by a separate instance of the same timer wheel used internally by
+/// Tokio's standalone timer utilities such as [`delay_for`]. Because of this, it offers the same
+/// performance and scalability benefits.
 ///
-/// State associated with each entry is stored in a [`slab`]. This allows
-/// amortizing the cost of allocation. Space created for expired entries is
-/// reused when inserting new entries.
+/// State associated with each entry is stored in a [`slab`]. This amortizes the cost of allocation,
+/// and allows reuse of the memory allocated for expired entires.
 ///
 /// Capacity can be checked using [`capacity`] and allocated preemptively by using
 /// the [`reserve`] method.
@@ -112,16 +111,17 @@ use std::task::{self, Poll};
 /// }
 /// ```
 ///
-/// [`insert`]: #method.insert
-/// [`insert_at`]: #method.insert_at
-/// [`Key`]: struct.Key.html
+/// [`insert`]: method@Self::insert
+/// [`insert_at`]: method@Self::insert_at
+/// [`Key`]: struct@Key
 /// [`Stream`]: https://docs.rs/futures/0.1/futures/stream/trait.Stream.html
-/// [`poll`]: #method.poll
-/// [`Stream::poll`]: #method.poll
-/// [`Timer`]: ../struct.Timer.html
-/// [`slab`]: https://docs.rs/slab
-/// [`capacity`]: #method.capacity
-/// [`reserve`]: #method.reserve
+/// [`poll`]: method@Self::poll
+/// [`Stream::poll`]: method@Self::poll
+/// [`DelayQueue`]: struct@DelayQueue
+/// [`delay_for`]: fn@super::delay_for
+/// [`slab`]: slab
+/// [`capacity`]: method@Self::capacity
+/// [`reserve`]: method@Self::reserve
 #[derive(Debug)]
 pub struct DelayQueue<T> {
     /// Stores data associated with entries
@@ -148,7 +148,7 @@ pub struct DelayQueue<T> {
 ///
 /// Values are returned by [`DelayQueue::poll`].
 ///
-/// [`DelayQueue::poll`]: struct.DelayQueue.html#method.poll
+/// [`DelayQueue::poll`]: method@DelayQueue::poll
 #[derive(Debug)]
 pub struct Expired<T> {
     /// The data stored in the queue
@@ -166,8 +166,8 @@ pub struct Expired<T> {
 /// Instances of `Key` are returned by [`DelayQueue::insert`]. See [`DelayQueue`]
 /// documentation for more details.
 ///
-/// [`DelayQueue`]: struct.DelayQueue.html
-/// [`DelayQueue::insert`]: struct.DelayQueue.html#method.insert
+/// [`DelayQueue`]: struct@DelayQueue
+/// [`DelayQueue::insert`]: method@DelayQueue::insert
 #[derive(Debug, Clone)]
 pub struct Key {
     index: usize,
@@ -295,10 +295,10 @@ impl<T> DelayQueue<T> {
     /// # }
     /// ```
     ///
-    /// [`poll`]: #method.poll
-    /// [`remove`]: #method.remove
-    /// [`reset`]: #method.reset
-    /// [`Key`]: struct.Key.html
+    /// [`poll`]: method@Self::poll
+    /// [`remove`]: method@Self::remove
+    /// [`reset`]: method@Self::reset
+    /// [`Key`]: struct@Key
     /// [type]: #
     pub fn insert_at(&mut self, value: T, when: Instant) -> Key {
         assert!(self.slab.len() < MAX_ENTRIES, "max entries exceeded");
@@ -403,10 +403,10 @@ impl<T> DelayQueue<T> {
     /// # }
     /// ```
     ///
-    /// [`poll`]: #method.poll
-    /// [`remove`]: #method.remove
-    /// [`reset`]: #method.reset
-    /// [`Key`]: struct.Key.html
+    /// [`poll`]: method@Self::poll
+    /// [`remove`]: method@Self::remove
+    /// [`reset`]: method@Self::reset
+    /// [`Key`]: struct@Key
     /// [type]: #
     pub fn insert(&mut self, value: T, timeout: Duration) -> Key {
         self.insert_at(value, Instant::now() + timeout)
@@ -574,7 +574,7 @@ impl<T> DelayQueue<T> {
     ///
     /// Note that this method has no effect on the allocated capacity.
     ///
-    /// [`poll`]: #method.poll
+    /// [`poll`]: method@Self::poll
     ///
     /// # Examples
     ///
@@ -721,15 +721,16 @@ impl<T> DelayQueue<T> {
                 self.poll = wheel::Poll::new(now);
             }
 
-            self.delay = None;
+            // We poll the wheel to get the next value out before finding the next deadline.
+            let wheel_idx = self.wheel.poll(&mut self.poll, &mut self.slab);
 
-            if let Some(idx) = self.wheel.poll(&mut self.poll, &mut self.slab) {
+            self.delay = self.next_deadline().map(delay_until);
+
+            if let Some(idx) = wheel_idx {
                 return Poll::Ready(Some(Ok(idx)));
             }
 
-            if let Some(deadline) = self.next_deadline() {
-                self.delay = Some(delay_until(deadline));
-            } else {
+            if self.delay.is_none() {
                 return Poll::Ready(None);
             }
         }
@@ -877,5 +878,10 @@ impl<T> Expired<T> {
     /// Consumes `self` and returns the inner value.
     pub fn into_inner(self) -> T {
         self.data
+    }
+
+    /// Returns the deadline that the expiration was set to.
+    pub fn deadline(&self) -> Instant {
+        self.deadline
     }
 }
